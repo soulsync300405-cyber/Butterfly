@@ -1,0 +1,1090 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Brain, Heart, Shield, Mic, MicOff, Video, VideoOff, Phone, PhoneOff,
+  Eye, Activity, AlertTriangle, CheckCircle, Clock, Star, Zap, Target,
+  BarChart2, MessageCircle, User, Users, Settings, ChevronRight, X,
+  Volume2, Sliders, Sparkles, Moon, Sun, Wind, Waves, Play, Pause,
+  TrendingUp, FileText, Bell, Lock, Unlock, Camera, RefreshCw, Award,
+  BookOpen, Flame, ArrowRight, MoreVertical, ChevronDown, Send,
+  LogOut, Badge, Cpu
+} from "lucide-react";
+
+// ─── MOCK DATA ───────────────────────────────────────────────────────────────
+const MOCK_PATIENTS = [
+  { id: 1, name: "Kartik Bisht", age: 22, tags: ["ADHD", "Anxiety"], status: "CRITICAL", lastSession: "2h ago", riskScore: 94, emotion: "Suppressed Anxiety", sessions: 14, avatar: "KB" },
+  { id: 2, name: "Priya Sharma", age: 19, tags: ["OCD", "Focus"], status: "MODERATE", lastSession: "1d ago", riskScore: 61, emotion: "Mild Fatigue", sessions: 7, avatar: "PS" },
+  { id: 3, name: "Aryan Mehta", age: 25, tags: ["Anxiety"], status: "STABLE", lastSession: "3d ago", riskScore: 32, emotion: "Calm", sessions: 21, avatar: "AM" },
+  { id: 4, name: "Neha Gupta", age: 21, tags: ["ADHD", "Focus"], status: "MODERATE", lastSession: "5h ago", riskScore: 58, emotion: "Distracted", sessions: 9, avatar: "NG" },
+];
+
+const MOCK_MESSAGES = [
+  { id: 1, role: "asha", text: "Haan yaar, main sun rahi hoon. Aaj kaisa feel ho raha hai? 💙", time: "10:02", sentiment: "supportive" },
+  { id: 2, role: "user", text: "Bahut overwhelmed hoon. Exams ke wajah se neend nahi aa rahi", time: "10:03", sentiment: "distressed" },
+  { id: 3, role: "asha", text: "Samajh sakti hoon. Ye feelings bilkul valid hain. Ek kaam karte hain — abhi sirf ek deep breath lo mere saath. Breathe in... 4 counts. Ready? 🌬️", time: "10:03", sentiment: "grounding" },
+  { id: 4, role: "user", text: "Okay... tried it. Thoda better lagा", time: "10:05", sentiment: "improving" },
+  { id: 5, role: "asha", text: "Perfect! Dekho, tumhara body already respond kar raha hai. Ab mujhe batao — ek cheez jo aaj definitely complete kar sako? Sirf ek. 🎯", time: "10:05", sentiment: "goal-oriented" },
+];
+
+const VISUAL_LOGS = [
+  { time: "10:00", emotion: "Neutral", fatigue: 45, focus: 62, env: "Normal workspace" },
+  { time: "10:05", emotion: "Anxiety", fatigue: 67, focus: 38, env: "Cluttered desk detected" },
+  { time: "10:10", emotion: "Suppressed Fear", fatigue: 81, focus: 22, env: "Dark room, poor lighting" },
+  { time: "10:15", emotion: "Improving", fatigue: 71, focus: 41, env: "Dark room" },
+];
+
+const QUESTS = [
+  { id: 1, title: "2-Minute Focus Sprint", type: "ADHD", xp: 50, icon: Target, desc: "Pick ONE task. Do it for 120 seconds. No phone.", completed: false },
+  { id: 2, title: "Worry Box", type: "OCD", xp: 40, icon: BookOpen, desc: "Write down 3 intrusive thoughts. Fold them. Put in box.", completed: true },
+  { id: 3, title: "4-7-8 Breathing", type: "Anxiety", xp: 30, icon: Wind, desc: "Breathe in 4s, hold 7s, out 8s. Repeat 3x.", completed: false },
+  { id: 4, title: "Gratitude Snap", type: "Focus", xp: 25, icon: Sparkles, desc: "Name 3 tiny good things from today.", completed: false },
+];
+
+const VOICE_PROFILES = ["Grounding Male", "Calm Female", "Neutral Androgynous", "Warm Elder"];
+
+// ─── ASHA AVATAR ──────────────────────────────────────────────────────────────
+function AshaAvatar({ speaking, size = 120 }) {
+  const bars = Array.from({ length: 12 });
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      {/* Outer glow rings */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{ width: size * 1.4, height: size * 1.4, border: "1px solid rgba(79,70,229,0.3)" }}
+        animate={{ scale: [1, 1.08, 1], opacity: [0.3, 0.6, 0.3] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute rounded-full"
+        style={{ width: size * 1.2, height: size * 1.2, border: "1px solid rgba(139,92,246,0.4)" }}
+        animate={{ scale: [1, 1.05, 1], opacity: [0.4, 0.7, 0.4] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+      />
+      {/* Core circle */}
+      <motion.div
+        className="relative rounded-full flex items-center justify-center overflow-hidden"
+        style={{
+          width: size, height: size,
+          background: "radial-gradient(circle at 35% 35%, #6d5bd4, #2d1b69, #0a0a1a)",
+          boxShadow: "0 0 40px rgba(79,70,229,0.6), inset 0 0 30px rgba(139,92,246,0.2)"
+        }}
+        animate={{ scale: [1, 1.02, 1] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+      >
+        {/* SVG face */}
+        <svg viewBox="0 0 80 80" width={size * 0.7} height={size * 0.7}>
+          <defs>
+            <radialGradient id="faceGrad" cx="40%" cy="35%">
+              <stop offset="0%" stopColor="#a78bfa" />
+              <stop offset="100%" stopColor="#4f46e5" />
+            </radialGradient>
+          </defs>
+          {/* Head */}
+          <ellipse cx="40" cy="38" rx="22" ry="26" fill="url(#faceGrad)" opacity="0.9" />
+          {/* Eyes */}
+          <motion.ellipse cx="32" cy="32" rx="3" ry="3.5" fill="white"
+            animate={{ scaleY: [1, 0.1, 1] }} transition={{ duration: 4, repeat: Infinity, delay: 2 }} />
+          <motion.ellipse cx="48" cy="32" rx="3" ry="3.5" fill="white"
+            animate={{ scaleY: [1, 0.1, 1] }} transition={{ duration: 4, repeat: Infinity, delay: 2 }} />
+          <circle cx="32.8" cy="32.5" r="1.5" fill="#1a1040" />
+          <circle cx="48.8" cy="32.5" r="1.5" fill="#1a1040" />
+          {/* Smile */}
+          <path d="M 33 44 Q 40 50 47 44" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          {/* Neural lines */}
+          <path d="M 20 25 Q 15 20 18 15" stroke="rgba(167,139,250,0.5)" strokeWidth="0.8" fill="none" />
+          <path d="M 60 25 Q 65 20 62 15" stroke="rgba(167,139,250,0.5)" strokeWidth="0.8" fill="none" />
+        </svg>
+      </motion.div>
+      {/* Voice waveform bars */}
+      {speaking && (
+        <div className="absolute bottom-0 flex gap-0.5 items-end" style={{ height: 20 }}>
+          {bars.map((_, i) => (
+            <motion.div
+              key={i}
+              className="rounded-full"
+              style={{ width: 3, background: "linear-gradient(to top, #4f46e5, #a78bfa)" }}
+              animate={{ height: [4, Math.random() * 14 + 4, 4] }}
+              transition={{ duration: 0.3 + Math.random() * 0.4, repeat: Infinity, delay: i * 0.05 }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PERSONA INITIALIZATION ───────────────────────────────────────────────────
+function PersonaInit({ onComplete }) {
+  const [selected, setSelected] = useState([]);
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const tags = [
+    { id: "ADHD", icon: Zap, color: "#f59e0b", desc: "Attention & Hyperactivity" },
+    { id: "OCD", icon: RefreshCw, color: "#ec4899", desc: "Repetitive Thoughts" },
+    { id: "Anxiety", icon: Activity, color: "#ef4444", desc: "Worry & Stress" },
+    { id: "Focus", icon: Target, color: "#10b981", desc: "Concentration Issues" },
+  ];
+  const toggle = (id) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+
+  return (
+    <motion.div className="min-h-screen flex items-center justify-center p-6"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <div className="w-full max-w-lg">
+        <AnimatePresence mode="wait">
+          {step === 0 && (
+            <motion.div key="s0" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -30 }} className="text-center space-y-8">
+              <AshaAvatar speaking={false} size={100} />
+              <div>
+                <h1 className="text-3xl font-bold text-white mb-2" style={{ fontFamily: "'Syne', sans-serif" }}>Namaste! 🙏</h1>
+                <p className="text-purple-300">Main hoon Asha — tumhari AI wellness companion</p>
+              </div>
+              <div className="glass-panel p-6 rounded-2xl space-y-4">
+                <label className="text-sm text-purple-300 block text-left">Tumhara naam kya hai?</label>
+                <input
+                  value={name} onChange={e => setName(e.target.value)}
+                  placeholder="Enter your name..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+              <button onClick={() => name && setStep(1)}
+                className={`w-full py-4 rounded-2xl font-semibold text-white transition-all ${name ? "bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/30" : "bg-white/10 cursor-not-allowed"}`}>
+                Aage Chalo →
+              </button>
+            </motion.div>
+          )}
+          {step === 1 && (
+            <motion.div key="s1" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -30 }} className="space-y-6">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-white" style={{ fontFamily: "'Syne', sans-serif" }}>Kuch cheezein select karo</h2>
+                <p className="text-purple-300 mt-1">Jinse tum relate karte ho — yeh Asha ko customize karega</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {tags.map(tag => (
+                  <motion.button key={tag.id} onClick={() => toggle(tag.id)}
+                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                    className={`p-4 rounded-2xl border text-left transition-all ${selected.includes(tag.id) ? "border-indigo-500 bg-indigo-500/20" : "border-white/10 bg-white/5 hover:border-white/30"}`}>
+                    <tag.icon size={20} style={{ color: tag.color }} className="mb-2" />
+                    <div className="text-white font-semibold text-sm">{tag.id}</div>
+                    <div className="text-white/50 text-xs">{tag.desc}</div>
+                    {selected.includes(tag.id) && (
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
+                        className="absolute top-2 right-2 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center">
+                        <CheckCircle size={12} className="text-white" />
+                      </motion.div>
+                    )}
+                  </motion.button>
+                ))}
+              </div>
+              <button onClick={() => onComplete({ name, tags: selected })}
+                className="w-full py-4 rounded-2xl font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 transition-all">
+                SoulSync Shuru Karo ✨
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── PSYCHOLOGIST LOGIN ───────────────────────────────────────────────────────
+function PsychLogin({ onLogin }) {
+  const [licenseId, setLicenseId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = () => {
+    if (!licenseId.trim()) { setError("License ID required"); return; }
+    setLoading(true);
+    setTimeout(() => {
+      if (licenseId === "MCI-2024-DEMO" || licenseId.length >= 6) { onLogin(licenseId); }
+      else { setError("Invalid Medical License ID"); setLoading(false); }
+    }, 1500);
+  };
+
+  return (
+    <motion.div className="min-h-screen flex items-center justify-center p-6"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <div className="w-full max-w-md">
+        <div className="glass-panel p-8 rounded-3xl border border-indigo-500/20 space-y-6">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center mx-auto">
+              <Shield size={28} className="text-indigo-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-white" style={{ fontFamily: "'Syne', sans-serif" }}>Clinical Portal</h2>
+            <p className="text-white/50 text-sm">Verified Professionals Only</p>
+          </div>
+          <div className="space-y-3">
+            <label className="text-sm text-purple-300">Medical License ID</label>
+            <input value={licenseId} onChange={e => { setLicenseId(e.target.value); setError(""); }}
+              placeholder="e.g. MCI-2024-DEMO"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <p className="text-white/30 text-xs">Try: MCI-2024-DEMO</p>
+          </div>
+          <button onClick={handleLogin} disabled={loading}
+            className="w-full py-4 rounded-2xl font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+            {loading ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><RefreshCw size={18} /></motion.div> : <><Lock size={18} /> Verify & Enter</>}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── ASHA CUSTOMIZER ─────────────────────────────────────────────────────────
+function AshaCustomizer({ config, onChange, onClose }) {
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)" }}>
+      <div className="glass-panel rounded-3xl p-6 w-full max-w-md border border-white/10 space-y-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-white" style={{ fontFamily: "'Syne', sans-serif" }}>Asha Customizer</h3>
+          <button onClick={onClose} className="text-white/50 hover:text-white"><X size={20} /></button>
+        </div>
+        <div className="flex justify-center">
+          <AshaAvatar speaking={false} size={80} />
+        </div>
+        {[
+          { key: "tone", label: "Tone", left: "Empathetic", right: "Goal-Oriented" },
+          { key: "pitch", label: "Voice Pitch", left: "High", right: "Deep" },
+          { key: "creativity", label: "Creativity", left: "Conservative", right: "Expressive" },
+        ].map(item => (
+          <div key={item.key} className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-purple-300">{item.label}</span>
+              <span className="text-white/50">{item.left} ↔ {item.right}</span>
+            </div>
+            <input type="range" min={0} max={100} value={config[item.key] ?? 50}
+              onChange={e => onChange({ ...config, [item.key]: +e.target.value })}
+              className="w-full accent-indigo-500" />
+            <div className="flex justify-between text-xs text-white/30">
+              <span>{item.left}</span><span>{item.right}</span>
+            </div>
+          </div>
+        ))}
+        <div className="space-y-2">
+          <label className="text-sm text-purple-300">Voice Profile</label>
+          <div className="grid grid-cols-2 gap-2">
+            {VOICE_PROFILES.map(p => (
+              <button key={p} onClick={() => onChange({ ...config, voice: p })}
+                className={`py-2 px-3 rounded-xl text-xs font-medium transition-all ${config.voice === p ? "bg-indigo-600 text-white" : "bg-white/5 text-white/60 hover:bg-white/10"}`}>
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between py-3 px-4 bg-white/5 rounded-xl">
+          <div>
+            <div className="text-white text-sm font-medium">Hinglish Mode</div>
+            <div className="text-white/40 text-xs">Hindi + English blend</div>
+          </div>
+          <button onClick={() => onChange({ ...config, hinglish: !config.hinglish })}
+            className={`w-12 h-6 rounded-full transition-all relative ${config.hinglish ? "bg-indigo-600" : "bg-white/20"}`}>
+            <motion.div animate={{ x: config.hinglish ? 24 : 2 }}
+              className="absolute top-1 w-4 h-4 bg-white rounded-full shadow" />
+          </button>
+        </div>
+        <button onClick={onClose} className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 transition-all">
+          Save Changes
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── VISION MODE ──────────────────────────────────────────────────────────────
+function VisionMode({ onClose }) {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState(null);
+  const canvasRef = useRef(null);
+  const frameRef = useRef(null);
+
+  const drawNoisyFeed = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const { width: w, height: h } = canvas;
+    ctx.fillStyle = "#0a0a14";
+    ctx.fillRect(0, 0, w, h);
+    // Grid
+    ctx.strokeStyle = "rgba(79,70,229,0.1)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    for (let y = 0; y < h; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    // Face outline
+    ctx.strokeStyle = "rgba(79,70,229,0.7)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.ellipse(w / 2, h / 2 - 10, 60, 75, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Scan line
+    const scanY = (Date.now() / 20) % h;
+    const grad = ctx.createLinearGradient(0, scanY - 20, 0, scanY + 5);
+    grad.addColorStop(0, "transparent");
+    grad.addColorStop(1, "rgba(79,70,229,0.5)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, scanY - 20, w, 25);
+    // Dots
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = `rgba(167,139,250,${Math.random() * 0.8 + 0.2})`;
+      ctx.beginPath();
+      ctx.arc(w / 2 + (Math.random() - 0.5) * 120, h / 2 + (Math.random() - 0.5) * 150 - 10, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    frameRef.current = requestAnimationFrame(drawNoisyFeed);
+  }, []);
+
+  useEffect(() => {
+    frameRef.current = requestAnimationFrame(drawNoisyFeed);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [drawNoisyFeed]);
+
+  const runAnalysis = () => {
+    setAnalyzing(true);
+    setResult(null);
+    setTimeout(() => {
+      setAnalyzing(false);
+      setResult({
+        emotion: "Suppressed Anxiety",
+        fatigue: 78,
+        focus: 31,
+        darkCircles: true,
+        eyeContact: "Avoidant",
+        environment: "Cluttered workspace, poor lighting",
+        advice: "Yaar, tumhara workspace thoda overwhelming lag raha hai. Sirf 5 minutes — teen cheezein hata do table se. Environment calmness ko affect karta hai! 🏡",
+        confidence: 87
+      });
+    }, 2500);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.95)" }}>
+      <div className="glass-panel rounded-3xl p-6 w-full max-w-lg border border-indigo-500/30 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Eye size={20} className="text-indigo-400" />
+            <h3 className="text-white font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>Vision Analysis Mode</h3>
+          </div>
+          <button onClick={onClose} className="text-white/50 hover:text-white"><X size={20} /></button>
+        </div>
+        <div className="relative rounded-2xl overflow-hidden" style={{ height: 200 }}>
+          <canvas ref={canvasRef} width={460} height={200} className="w-full h-full" />
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-500/20 border border-red-500/50 rounded-full px-3 py-1">
+            <motion.div animate={{ opacity: [1, 0, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
+              className="w-2 h-2 rounded-full bg-red-500" />
+            <span className="text-red-400 text-xs font-medium">ANALYZING</span>
+          </div>
+          <div className="absolute bottom-2 right-2 text-xs text-indigo-400/70 font-mono">SOULSYNC VISION v2.1</div>
+        </div>
+        {!result && (
+          <button onClick={runAnalysis} disabled={analyzing}
+            className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all disabled:opacity-70 flex items-center justify-center gap-2">
+            {analyzing ? <><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><RefreshCw size={16} /></motion.div> Scanning…</> : <><Camera size={16} /> Run Emotion Analysis</>}
+          </button>
+        )}
+        {result && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Emotion", value: result.emotion, color: "#ef4444" },
+                { label: "Eye Contact", value: result.eyeContact, color: "#f59e0b" },
+                { label: "Fatigue", value: `${result.fatigue}%`, color: "#ec4899" },
+                { label: "Focus", value: `${result.focus}%`, color: "#10b981" },
+              ].map(item => (
+                <div key={item.label} className="bg-white/5 rounded-xl p-3">
+                  <div className="text-white/40 text-xs">{item.label}</div>
+                  <div className="font-semibold text-sm mt-1" style={{ color: item.color }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white/5 rounded-xl p-3 space-y-1">
+              <div className="text-white/40 text-xs">Environment</div>
+              <div className="text-white text-sm">{result.environment}</div>
+              {result.darkCircles && <div className="text-yellow-400 text-xs flex items-center gap-1"><AlertTriangle size={12} /> Dark circles detected — sleep deficit likely</div>}
+            </div>
+            <div className="bg-indigo-600/20 border border-indigo-500/30 rounded-xl p-3">
+              <div className="text-indigo-300 text-xs mb-1">Asha's Advice</div>
+              <p className="text-white text-sm">{result.advice}</p>
+            </div>
+            <div className="text-center text-white/30 text-xs">Confidence: {result.confidence}%</div>
+          </motion.div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── VOICE CALL ───────────────────────────────────────────────────────────────
+function VoiceCall({ user, ashaConfig, onEnd }) {
+  const [muted, setMuted] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [ashaSpeak, setAshaSpeak] = useState(true);
+  const bars = Array.from({ length: 20 });
+
+  useEffect(() => {
+    const t = setInterval(() => setSeconds(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setAshaSpeak(p => !p), 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-between py-16 px-6"
+      style={{ background: "radial-gradient(ellipse at center, #0f0a2e 0%, #0a0a0c 70%)" }}>
+      <div className="text-center space-y-2">
+        <p className="text-indigo-300 text-sm tracking-widest uppercase">Voice Session</p>
+        <h2 className="text-white text-2xl font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>Asha</h2>
+        <p className="text-white/40 text-sm">{ashaConfig?.voice || "Calm Female"}</p>
+      </div>
+      <div className="flex flex-col items-center gap-8">
+        <AshaAvatar speaking={ashaSpeak} size={160} />
+        {/* Waveform */}
+        <div className="flex items-center gap-1" style={{ height: 40 }}>
+          {bars.map((_, i) => (
+            <motion.div key={i} className="rounded-full" style={{ width: 3, background: "linear-gradient(to top, #4f46e5, #a78bfa)" }}
+              animate={ashaSpeak ? { height: [3, Math.random() * 30 + 5, 3] } : { height: 3 }}
+              transition={{ duration: 0.2 + Math.random() * 0.3, repeat: Infinity, delay: i * 0.04 }} />
+          ))}
+        </div>
+        <div className="text-white/60 font-mono text-lg">{fmt(seconds)}</div>
+      </div>
+      <div className="flex items-center gap-6">
+        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setMuted(m => !m)}
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${muted ? "bg-red-500/20 border border-red-500/50" : "bg-white/10 border border-white/20"}`}>
+          {muted ? <MicOff size={22} className="text-red-400" /> : <Mic size={22} className="text-white" />}
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onEnd}
+          className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/40">
+          <PhoneOff size={24} className="text-white" />
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+          className="w-14 h-14 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+          <Volume2 size={22} className="text-white" />
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── DAILY QUESTS ──────────────────────────────────────────────────────────────
+function DailyQuests({ userTags }) {
+  const [completed, setCompleted] = useState([2]);
+  const relevant = QUESTS.filter(q => !userTags?.length || userTags.includes(q.type));
+  const total = relevant.length;
+  const done = relevant.filter(q => completed.includes(q.id)).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-white font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>Daily Quests</h3>
+        <span className="text-indigo-400 text-sm">{done}/{total}</span>
+      </div>
+      {/* XP bar */}
+      <div className="bg-white/10 rounded-full h-2 overflow-hidden">
+        <motion.div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
+          animate={{ width: `${(done / total) * 100}%` }} transition={{ duration: 0.5 }} />
+      </div>
+      <div className="space-y-2">
+        {(userTags?.length ? relevant : QUESTS).map(quest => {
+          const isDone = completed.includes(quest.id);
+          return (
+            <motion.div key={quest.id} layout
+              className={`p-3 rounded-xl border transition-all cursor-pointer ${isDone ? "border-green-500/30 bg-green-500/10" : "border-white/10 bg-white/5 hover:border-indigo-500/50"}`}
+              onClick={() => setCompleted(p => isDone ? p.filter(x => x !== quest.id) : [...p, quest.id])}>
+              <div className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isDone ? "bg-green-500/20" : "bg-indigo-500/20"}`}>
+                  {isDone ? <CheckCircle size={16} className="text-green-400" /> : <quest.icon size={16} className="text-indigo-400" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white text-sm font-medium">{quest.title}</span>
+                    <span className="text-indigo-400 text-xs">+{quest.xp}xp</span>
+                  </div>
+                  <p className="text-white/40 text-xs mt-0.5 line-clamp-2">{quest.desc}</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${quest.type === "ADHD" ? "bg-amber-500/20 text-amber-400" : quest.type === "OCD" ? "bg-pink-500/20 text-pink-400" : quest.type === "Anxiety" ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"}`}>
+                    {quest.type}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── STUDENT CHAT ──────────────────────────────────────────────────────────────
+function StudentChat({ user, ashaConfig }) {
+  const [messages, setMessages] = useState(MOCK_MESSAGES);
+  const [input, setInput] = useState("");
+  const [ashaTyping, setAshaTyping] = useState(false);
+  const [showCustomizer, setShowCustomizer] = useState(false);
+  const [showVision, setShowVision] = useState(false);
+  const [showCall, setShowCall] = useState(false);
+  const [config, setConfig] = useState(ashaConfig || { tone: 50, pitch: 50, creativity: 60, hinglish: true, voice: "Calm Female" });
+  const [activeTab, setActiveTab] = useState("chat");
+  const endRef = useRef(null);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, ashaTyping]);
+
+  const ASHA_RESPONSES = [
+    "Bilkul samajh sakti hoon. Thoda aur batao — kya specific cheez hai jo zyada bother kar rahi hai? 💙",
+    "Yaar, ye feelings bahut real hain. Ek kaam karte hain — 5-4-3-2-1 technique try karein? 5 cheezein jo dikh rahi hain, 4 jo feel ho rahi hain... 🌟",
+    "Tumne jo share kiya, uske liye shukriya. Har step count karta hai, chahe kitna bhi chhota ho. 🌱",
+    "Interesting! Aur jab aisa hota hai, tumhara body kaisa feel karta hai? Koi tightness chest mein? 🤔",
+    "Haan! Ye progress hai! Chhoti victories bhi celebrate karni chahiye. Ek high five deserves karti ho! ✋",
+  ];
+
+  const sendMessage = () => {
+    if (!input.trim()) return;
+    const userMsg = { id: Date.now(), role: "user", text: input, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), sentiment: "neutral" };
+    setMessages(p => [...p, userMsg]);
+    setInput("");
+    setAshaTyping(true);
+    setTimeout(() => {
+      setAshaTyping(false);
+      const r = ASHA_RESPONSES[Math.floor(Math.random() * ASHA_RESPONSES.length)];
+      setMessages(p => [...p, { id: Date.now() + 1, role: "asha", text: r, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), sentiment: "supportive" }]);
+    }, 1500 + Math.random() * 1000);
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar */}
+      <div className="w-72 flex-shrink-0 border-r border-white/5 flex flex-col p-4 gap-4 overflow-y-auto">
+        {/* User card */}
+        <div className="glass-panel rounded-2xl p-4 border border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-white font-bold text-sm">
+              {user?.name?.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+            </div>
+            <div>
+              <div className="text-white font-semibold text-sm">{user?.name || "User"}</div>
+              <div className="flex gap-1 flex-wrap">
+                {(user?.tags || []).map(t => (
+                  <span key={t} className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">{t}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {[{ label: "Streak", value: "7d", icon: Flame }, { label: "XP", value: "340", icon: Star }, { label: "Sessions", value: "12", icon: MessageCircle }].map(item => (
+              <div key={item.label} className="text-center bg-white/5 rounded-xl p-2">
+                <item.icon size={14} className="text-indigo-400 mx-auto mb-1" />
+                <div className="text-white text-sm font-bold">{item.value}</div>
+                <div className="text-white/40 text-xs">{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Quick actions */}
+        <div className="space-y-2">
+          {[
+            { label: "Voice Call", icon: Phone, action: () => setShowCall(true), color: "text-green-400" },
+            { label: "Vision Mode", icon: Eye, action: () => setShowVision(true), color: "text-blue-400" },
+            { label: "Customize Asha", icon: Sliders, action: () => setShowCustomizer(true), color: "text-purple-400" },
+          ].map(item => (
+            <button key={item.label} onClick={item.action}
+              className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 transition-all text-left">
+              <item.icon size={16} className={item.color} />
+              <span className="text-white/80 text-sm">{item.label}</span>
+              <ChevronRight size={14} className="text-white/30 ml-auto" />
+            </button>
+          ))}
+        </div>
+        {/* Quests */}
+        <DailyQuests userTags={user?.tags} />
+      </div>
+
+      {/* Main chat */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <div className="flex items-center gap-4 px-6 py-4 border-b border-white/5 glass-panel">
+          <AshaAvatar speaking={ashaTyping} size={44} />
+          <div>
+            <div className="text-white font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>Asha</div>
+            <div className="flex items-center gap-2">
+              <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }}
+                className="w-1.5 h-1.5 rounded-full bg-green-400" />
+              <span className="text-green-400 text-xs">{ashaTyping ? "typing..." : "Active now"}</span>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            {config.hinglish && (
+              <span className="text-xs px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300">Hinglish Mode</span>
+            )}
+            <span className="text-xs text-white/40">{config.voice}</span>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {messages.map(msg => (
+            <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+              {msg.role === "asha" && <AshaAvatar speaking={false} size={32} />}
+              <div className={`max-w-xs lg:max-w-md ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
+                <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user"
+                  ? "bg-indigo-600 text-white rounded-tr-sm"
+                  : "bg-white/5 border border-white/10 text-white rounded-tl-sm"}`}>
+                  {msg.text}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/30 text-xs">{msg.time}</span>
+                  {msg.sentiment && <span className={`text-xs px-2 py-0.5 rounded-full ${msg.sentiment === "distressed" ? "bg-red-500/20 text-red-400" : msg.sentiment === "improving" ? "bg-green-500/20 text-green-400" : "bg-indigo-500/20 text-indigo-400"}`}>{msg.sentiment}</span>}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+          {ashaTyping && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3 items-center">
+              <AshaAvatar speaking size={32} />
+              <div className="bg-white/5 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1.5">
+                {[0, 0.2, 0.4].map(d => (
+                  <motion.div key={d} animate={{ y: [0, -6, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay: d }}
+                    className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                ))}
+              </div>
+            </motion.div>
+          )}
+          <div ref={endRef} />
+        </div>
+
+        {/* Input */}
+        <div className="p-4 border-t border-white/5">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 flex items-center gap-3 focus-within:border-indigo-500/50 transition-colors">
+              <input value={input} onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                placeholder={config.hinglish ? "Kuch bhi share karo..." : "Share your thoughts..."}
+                className="flex-1 bg-transparent text-white placeholder-white/30 focus:outline-none text-sm" />
+              <button onClick={() => setShowCall(true)} className="text-white/30 hover:text-indigo-400 transition-colors">
+                <Mic size={18} />
+              </button>
+            </div>
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={sendMessage}
+              className="w-12 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 transition-all">
+              <Send size={18} className="text-white" />
+            </motion.button>
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showCustomizer && <AshaCustomizer config={config} onChange={setConfig} onClose={() => setShowCustomizer(false)} />}
+        {showVision && <VisionMode onClose={() => setShowVision(false)} />}
+        {showCall && <VoiceCall user={user} ashaConfig={config} onEnd={() => setShowCall(false)} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── PATIENT MODAL ────────────────────────────────────────────────────────────
+function PatientModal({ patient, onClose }) {
+  const [tab, setTab] = useState("chat");
+  if (!patient) return null;
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)" }}>
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+        className="glass-panel rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col border border-white/10 overflow-hidden">
+        {/* Header */}
+        <div className="p-6 border-b border-white/10 flex items-center gap-4">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold ${patient.status === "CRITICAL" ? "bg-red-500/30 border border-red-500/50" : patient.status === "MODERATE" ? "bg-yellow-500/30 border border-yellow-500/50" : "bg-green-500/30 border border-green-500/50"}`}>
+            {patient.avatar}
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-white font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>{patient.name}</h3>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${patient.status === "CRITICAL" ? "bg-red-500/20 text-red-400" : patient.status === "MODERATE" ? "bg-yellow-500/20 text-yellow-400" : "bg-green-500/20 text-green-400"}`}>
+                {patient.status}
+              </span>
+            </div>
+            <div className="flex gap-2 mt-1">
+              {patient.tags.map(t => <span key={t} className="text-xs text-white/50">{t}</span>)}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/50 hover:text-white"><X size={20} /></button>
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-1 px-6 pt-4">
+          {["chat", "visual", "overview"].map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all capitalize ${tab === t ? "bg-indigo-600 text-white" : "text-white/50 hover:text-white"}`}>
+              {t === "visual" ? "Visual Logs" : t === "overview" ? "Overview" : "Chat History"}
+            </button>
+          ))}
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <AnimatePresence mode="wait">
+            {tab === "chat" && (
+              <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                {MOCK_MESSAGES.map(msg => (
+                  <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-xs ${msg.role === "user" ? "bg-indigo-600/40 text-white" : "bg-white/5 text-white"}`}>
+                      {msg.text}
+                      <div className={`text-xs mt-1 ${msg.role === "user" ? "text-indigo-300" : "text-white/30"}`}>{msg.time} · {msg.sentiment}</div>
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+            {tab === "visual" && (
+              <motion.div key="visual" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                {VISUAL_LOGS.map((log, i) => (
+                  <div key={i} className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-white/60 text-sm font-mono">{log.time}</span>
+                      <span className={`text-sm font-semibold ${log.emotion.includes("Anxiety") || log.emotion.includes("Fear") ? "text-red-400" : log.emotion === "Neutral" ? "text-blue-400" : "text-green-400"}`}>{log.emotion}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      {[{ l: "Fatigue", v: log.fatigue, c: "#ef4444" }, { l: "Focus", v: log.focus, c: "#10b981" }].map(m => (
+                        <div key={m.l}>
+                          <div className="flex justify-between text-xs text-white/40 mb-1"><span>{m.l}</span><span>{m.v}%</span></div>
+                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${m.v}%`, background: m.c }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-white/40 text-xs">{log.env}</p>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+            {tab === "overview" && (
+              <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {[{ l: "Risk Score", v: `${patient.riskScore}%`, c: patient.riskScore > 70 ? "#ef4444" : "#f59e0b" }, { l: "Sessions", v: patient.sessions }, { l: "Emotion", v: patient.emotion, small: true }].map(item => (
+                    <div key={item.l} className="bg-white/5 rounded-xl p-4 text-center border border-white/10">
+                      <div className="text-sm" style={{ color: item.c || "white", fontWeight: 700 }}>{item.v}</div>
+                      <div className="text-white/40 text-xs mt-1">{item.l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <div className="text-white/60 text-sm">Wellness Tags</div>
+                  <div className="flex gap-2">{patient.tags.map(t => <span key={t} className="px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 text-sm">{t}</span>)}</div>
+                </div>
+                <div className="text-white/40 text-sm">Last session: {patient.lastSession}</div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        {/* Actions */}
+        <div className="p-4 border-t border-white/10 flex gap-3">
+          <button className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2">
+            <Zap size={16} /> Take Over Session
+          </button>
+          <button className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-semibold transition-all border border-white/10 flex items-center justify-center gap-2">
+            <MessageCircle size={16} /> Message Patient
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── PSYCHOLOGIST DASHBOARD ───────────────────────────────────────────────────
+function PsychDashboard({ licenseId, onLogout }) {
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [filter, setFilter] = useState("ALL");
+  const critical = MOCK_PATIENTS.filter(p => p.status === "CRITICAL").length;
+  const filtered = filter === "ALL" ? MOCK_PATIENTS : MOCK_PATIENTS.filter(p => p.status === filter);
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar nav */}
+      <div className="w-60 flex-shrink-0 border-r border-white/5 flex flex-col p-4 gap-4">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center">
+            <Shield size={18} className="text-indigo-400" />
+          </div>
+          <div>
+            <div className="text-white text-sm font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>Clinical Portal</div>
+            <div className="text-white/40 text-xs">{licenseId}</div>
+          </div>
+        </div>
+        {[
+          { label: "Patient Triage", icon: Users, active: true },
+          { label: "Analytics", icon: BarChart2 },
+          { label: "Reports", icon: FileText },
+          { label: "Notifications", icon: Bell },
+          { label: "Settings", icon: Settings },
+        ].map(item => (
+          <button key={item.label} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm ${item.active ? "bg-indigo-600/20 text-indigo-300 border border-indigo-500/30" : "text-white/50 hover:text-white hover:bg-white/5"}`}>
+            <item.icon size={16} />
+            {item.label}
+          </button>
+        ))}
+        <button onClick={onLogout} className="mt-auto flex items-center gap-3 px-4 py-3 rounded-xl text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all text-sm">
+          <LogOut size={16} /> Logout
+        </button>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Stats */}
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-6" style={{ fontFamily: "'Syne', sans-serif" }}>Patient Triage Dashboard</h1>
+          <div className="grid grid-cols-4 gap-4">
+            {[
+              { label: "Total Patients", value: MOCK_PATIENTS.length, icon: Users, color: "#4f46e5" },
+              { label: "Critical Alerts", value: critical, icon: AlertTriangle, color: "#ef4444" },
+              { label: "Active Sessions", value: 2, icon: Activity, color: "#10b981" },
+              { label: "Avg Risk Score", value: `${Math.round(MOCK_PATIENTS.reduce((a, b) => a + b.riskScore, 0) / MOCK_PATIENTS.length)}%`, icon: TrendingUp, color: "#f59e0b" },
+            ].map(stat => (
+              <div key={stat.label} className="glass-panel rounded-2xl p-4 border border-white/10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}20`, border: `1px solid ${stat.color}40` }}>
+                    <stat.icon size={16} style={{ color: stat.color }} />
+                  </div>
+                  {stat.label === "Critical Alerts" && critical > 0 && (
+                    <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
+                      className="w-2 h-2 rounded-full bg-red-500" />
+                  )}
+                </div>
+                <div className="text-2xl font-bold text-white">{stat.value}</div>
+                <div className="text-white/40 text-xs mt-1">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Triage list */}
+        <div className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
+          <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <h2 className="text-white font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>Patient Triage List</h2>
+            <div className="flex gap-2">
+              {["ALL", "CRITICAL", "MODERATE", "STABLE"].map(f => (
+                <button key={f} onClick={() => setFilter(f)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filter === f ? f === "CRITICAL" ? "bg-red-500/20 text-red-400 border border-red-500/50" : f === "MODERATE" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/50" : f === "STABLE" ? "bg-green-500/20 text-green-400 border border-green-500/50" : "bg-indigo-600 text-white" : "text-white/40 hover:text-white"}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="divide-y divide-white/5">
+            {filtered.map(patient => (
+              <motion.div key={patient.id} layout
+                className="p-4 hover:bg-white/5 transition-all cursor-pointer group"
+                onClick={() => setSelectedPatient(patient)}>
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold flex-shrink-0 ${patient.status === "CRITICAL" ? "bg-red-500/20 border border-red-500/40" : patient.status === "MODERATE" ? "bg-yellow-500/20 border border-yellow-500/40" : "bg-green-500/20 border border-green-500/40"}`}>
+                    {patient.avatar}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-semibold">{patient.name}</span>
+                      <span className="text-white/40 text-sm">({patient.age})</span>
+                      {patient.status === "CRITICAL" && (
+                        <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1, repeat: Infinity }}
+                          className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-semibold border border-red-500/30">
+                          ⚠ CRITICAL
+                        </motion.span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-white/40 text-sm">{patient.emotion}</span>
+                      <span className="text-white/20">·</span>
+                      <span className="text-white/40 text-sm">{patient.lastSession}</span>
+                    </div>
+                    <div className="flex gap-1 mt-1.5">
+                      {patient.tags.map(t => <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400">{t}</span>)}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 space-y-1">
+                    <div className="text-lg font-bold" style={{ color: patient.riskScore > 70 ? "#ef4444" : patient.riskScore > 50 ? "#f59e0b" : "#10b981" }}>{patient.riskScore}%</div>
+                    <div className="text-white/30 text-xs">Risk Score</div>
+                    <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${patient.riskScore}%`, background: patient.riskScore > 70 ? "#ef4444" : patient.riskScore > 50 ? "#f59e0b" : "#10b981" }} />
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-white/20 group-hover:text-white/60 transition-all ml-2" />
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* DBMS Schema */}
+        <div className="glass-panel rounded-2xl border border-white/10 p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Cpu size={18} className="text-indigo-400" />
+            <h2 className="text-white font-bold" style={{ fontFamily: "'Syne', sans-serif" }}>DBMS Architecture (Live Schema)</h2>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { name: "profiles", fields: ["id", "name", "role", "wellness_tags[]", "ai_tone", "ai_pitch", "hinglish_mode", "created_at"], color: "#4f46e5", rows: 127 },
+              { name: "messages", fields: ["id", "user_id", "content", "role", "sentiment_tag", "emotion_score", "timestamp"], color: "#8b5cf6", rows: 4821 },
+              { name: "visual_analysis", fields: ["id", "user_id", "emotion", "fatigue_pct", "focus_pct", "face_description", "environment_cue", "confidence", "ts"], color: "#a78bfa", rows: 893 },
+            ].map(table => (
+              <div key={table.name} className="bg-white/5 rounded-xl p-4 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ background: table.color }} />
+                    <span className="text-white font-mono text-sm font-semibold">{table.name}</span>
+                  </div>
+                  <span className="text-white/30 text-xs">{table.rows} rows</span>
+                </div>
+                <div className="space-y-1">
+                  {table.fields.map(f => (
+                    <div key={f} className="text-xs font-mono text-white/40 flex items-center gap-2">
+                      <span style={{ color: table.color, opacity: 0.6 }}>›</span> {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {selectedPatient && <PatientModal patient={selectedPatient} onClose={() => setSelectedPatient(null)} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── LANDING PAGE ──────────────────────────────────────────────────────────────
+function Landing({ onSelectRole }) {
+  return (
+    <motion.div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      {/* Background effects */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full opacity-10 blur-3xl" style={{ background: "radial-gradient(circle, #4f46e5, transparent)" }} />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 rounded-full opacity-10 blur-3xl" style={{ background: "radial-gradient(circle, #8b5cf6, transparent)" }} />
+        {/* Grid */}
+        <svg className="absolute inset-0 w-full h-full opacity-5" xmlns="http://www.w3.org/2000/svg">
+          <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#4f46e5" strokeWidth="0.5" /></pattern></defs>
+          <rect width="100%" height="100%" fill="url(#grid)" />
+        </svg>
+      </div>
+      <div className="relative z-10 text-center space-y-12 max-w-2xl">
+        <div className="space-y-6">
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", duration: 0.8 }}>
+            <AshaAvatar speaking={false} size={120} />
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+            <h1 className="text-5xl font-black text-white tracking-tight" style={{ fontFamily: "'Syne', sans-serif" }}>
+              Soul<span style={{ color: "#4f46e5" }}>Sync</span>
+            </h1>
+            <p className="text-white/50 mt-3 text-lg">AI-powered mental wellness · Clinically supervised · Culturally aware</p>
+          </motion.div>
+        </div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+          className="grid grid-cols-2 gap-4">
+          <motion.button whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.97 }}
+            onClick={() => onSelectRole("student")}
+            className="p-6 rounded-3xl border border-indigo-500/30 bg-indigo-600/10 hover:bg-indigo-600/20 transition-all text-left space-y-3 group">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center">
+              <Heart size={22} className="text-indigo-400" />
+            </div>
+            <div>
+              <div className="text-white font-bold text-lg" style={{ fontFamily: "'Syne', sans-serif" }}>Student / User</div>
+              <div className="text-white/40 text-sm mt-1">Talk to Asha, track your wellness, complete daily quests</div>
+            </div>
+            <div className="flex items-center gap-1 text-indigo-400 text-sm">Start Journey <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" /></div>
+          </motion.button>
+          <motion.button whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.97 }}
+            onClick={() => onSelectRole("psych")}
+            className="p-6 rounded-3xl border border-purple-500/30 bg-purple-600/10 hover:bg-purple-600/20 transition-all text-left space-y-3 group">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center">
+              <Shield size={22} className="text-purple-400" />
+            </div>
+            <div>
+              <div className="text-white font-bold text-lg" style={{ fontFamily: "'Syne', sans-serif" }}>Psychologist</div>
+              <div className="text-white/40 text-sm mt-1">Clinical dashboard, triage, patient oversight & intervention</div>
+            </div>
+            <div className="flex items-center gap-1 text-purple-400 text-sm">Enter Portal <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" /></div>
+          </motion.button>
+        </motion.div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}
+          className="flex items-center justify-center gap-6 text-white/20 text-xs">
+          <span className="flex items-center gap-1"><CheckCircle size={12} /> HIPAA Compliant</span>
+          <span className="flex items-center gap-1"><CheckCircle size={12} /> End-to-End Encrypted</span>
+          <span className="flex items-center gap-1"><CheckCircle size={12} /> AI + Clinical Oversight</span>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [screen, setScreen] = useState("landing"); // landing | persona | chat | psychLogin | psychDash
+  const [role, setRole] = useState(null);
+  const [user, setUser] = useState(null);
+  const [licenseId, setLicenseId] = useState(null);
+
+  const handleRoleSelect = (r) => {
+    setRole(r);
+    if (r === "student") setScreen("persona");
+    else setScreen("psychLogin");
+  };
+
+  return (
+    <div style={{ background: "#0a0a0c", minHeight: "100vh", fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.4); border-radius: 2px; }
+        .glass-panel { background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); }
+        input[type=range] { -webkit-appearance: none; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #4f46e5; cursor: pointer; border: 2px solid rgba(255,255,255,0.3); }
+      `}</style>
+      <AnimatePresence mode="wait">
+        {screen === "landing" && (
+          <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.98 }}>
+            <Landing onSelectRole={handleRoleSelect} />
+          </motion.div>
+        )}
+        {screen === "persona" && (
+          <motion.div key="persona" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <PersonaInit onComplete={(userData) => { setUser(userData); setScreen("chat"); }} />
+          </motion.div>
+        )}
+        {screen === "chat" && (
+          <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-screen">
+            <div className="fixed top-3 right-3 z-40">
+              <button onClick={() => setScreen("landing")} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs transition-all">
+                <LogOut size={12} /> Exit
+              </button>
+            </div>
+            <StudentChat user={user} ashaConfig={{ tone: 50, pitch: 50, creativity: 60, hinglish: true, voice: "Calm Female" }} />
+          </motion.div>
+        )}
+        {screen === "psychLogin" && (
+          <motion.div key="psychLogin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="fixed top-3 left-3 z-40">
+              <button onClick={() => setScreen("landing")} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs transition-all">
+                ← Back
+              </button>
+            </div>
+            <PsychLogin onLogin={(id) => { setLicenseId(id); setScreen("psychDash"); }} />
+          </motion.div>
+        )}
+        {screen === "psychDash" && (
+          <motion.div key="psychDash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-screen">
+            <PsychDashboard licenseId={licenseId} onLogout={() => setScreen("landing")} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

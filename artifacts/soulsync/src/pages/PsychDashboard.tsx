@@ -1,0 +1,716 @@
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Users, AlertTriangle, Activity, TrendingUp, BarChart2, FileText,
+  Bell, Settings, LogOut, Phone, MessageCircle, Zap, ChevronRight,
+  X, CheckCircle, RefreshCw, Shield, Clock, Download, Filter,
+  Eye, Star, BellOff
+} from "lucide-react";
+import { PATIENTS, NOTIFICATIONS, REPORTS, MOOD_DATA } from "@/lib/data";
+import { CallUI } from "@/components/CallUI";
+import { useStore } from "@/lib/store";
+import {
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
+} from "recharts";
+
+type PsychTab = "triage" | "analytics" | "reports" | "notifications" | "settings";
+
+export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onLogout: () => void }) {
+  const [tab, setTab] = useState<PsychTab>("triage");
+  const [selectedPatient, setSelectedPatient] = useState<typeof PATIENTS[0] | null>(null);
+  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const NAV = [
+    { id: "triage", label: "Patient Triage", icon: Users },
+    { id: "analytics", label: "Analytics", icon: BarChart2 },
+    { id: "reports", label: "Reports", icon: FileText },
+    { id: "notifications", label: "Notifications", icon: Bell, badge: unreadCount },
+    { id: "settings", label: "Settings", icon: Settings },
+  ] as const;
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar */}
+      <aside className="w-60 flex-shrink-0 bg-card border-r border-border flex flex-col">
+        <div className="px-4 py-5 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+              <Shield size={18} className="text-amber-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-foreground font-bold text-sm font-serif">Clinical Portal</p>
+              <p className="text-muted-foreground text-[10px] truncate">{licenseId}</p>
+            </div>
+          </div>
+        </div>
+        <nav className="flex-1 px-3 py-3 space-y-0.5">
+          {NAV.map(item => (
+            <button key={item.id} onClick={() => setTab(item.id as PsychTab)}
+              data-testid={`nav-psych-${item.id}`}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${tab === item.id ? "bg-amber-500/15 text-amber-700 border border-amber-500/25 font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+              <item.icon size={15} />
+              {item.label}
+              {"badge" in item && (item.badge as number) > 0 && (
+                <span className="ml-auto text-[10px] bg-destructive text-white rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
+                  {item.badge as number}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <button onClick={onLogout} data-testid="btn-psych-logout"
+          className="flex items-center gap-3 px-4 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors text-sm border-t border-border">
+          <LogOut size={14} /> Logout
+        </button>
+      </aside>
+
+      {/* Content */}
+      <main className="flex-1 overflow-y-auto">
+        <AnimatePresence mode="wait">
+          <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }} className="min-h-full">
+            {tab === "triage" && <TriageTab selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} />}
+            {tab === "analytics" && <AnalyticsTab />}
+            {tab === "reports" && <ReportsTab />}
+            {tab === "notifications" && <NotificationsTab notifications={notifications} setNotifications={setNotifications} />}
+            {tab === "settings" && <PsychSettingsTab licenseId={licenseId} />}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+}
+
+// ─── TRIAGE TAB ──────────────────────────────────────────────────────────────
+function TriageTab({ selectedPatient, setSelectedPatient }: {
+  selectedPatient: typeof PATIENTS[0] | null;
+  setSelectedPatient: (p: typeof PATIENTS[0] | null) => void;
+}) {
+  const [filter, setFilter] = useState("ALL");
+  const [showCall, setShowCall] = useState(false);
+  const [callPatient, setCallPatient] = useState<typeof PATIENTS[0] | null>(null);
+  const { psychNotes, setPsychNote } = useStore();
+
+  const critical = PATIENTS.filter(p => p.status === "CRITICAL").length;
+  const filtered = filter === "ALL" ? PATIENTS : PATIENTS.filter(p => p.status === filter);
+
+  const statusColor = (s: string) =>
+    s === "CRITICAL" ? "text-destructive bg-destructive/10 border-destructive/30" :
+    s === "MODERATE" ? "text-amber-700 bg-amber-100 border-amber-300" :
+    "text-green-700 bg-green-100 border-green-300";
+
+  return (
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-black font-serif text-foreground">Patient Triage Dashboard</h1>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Total Patients", value: PATIENTS.length, icon: Users, color: "text-primary", bg: "bg-primary/10" },
+          { label: "Critical Alerts", value: critical, icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10", pulse: critical > 0 },
+          { label: "Active Sessions", value: 2, icon: Activity, color: "text-green-600", bg: "bg-green-100" },
+          { label: "Avg Risk Score", value: `${Math.round(PATIENTS.reduce((a, b) => a + b.riskScore, 0) / PATIENTS.length)}%`, icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-100" },
+        ].map(stat => (
+          <div key={stat.label} className="bg-card border border-border rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className={`w-9 h-9 rounded-xl ${stat.bg} flex items-center justify-center`}>
+                <stat.icon size={16} className={stat.color} />
+              </div>
+              {"pulse" in stat && stat.pulse && (
+                <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
+                  className="w-2 h-2 rounded-full bg-destructive" />
+              )}
+            </div>
+            <p className={`text-3xl font-black ${stat.color}`}>{stat.value}</p>
+            <p className="text-muted-foreground text-xs mt-1">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter + patient list */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h2 className="font-bold text-foreground font-serif">Patient Triage List</h2>
+          <div className="flex gap-1.5">
+            {["ALL", "CRITICAL", "MODERATE", "STABLE"].map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filter === f
+                  ? f === "CRITICAL" ? "bg-destructive/15 text-destructive border border-destructive/40"
+                  : f === "MODERATE" ? "bg-amber-100 text-amber-700 border border-amber-300"
+                  : f === "STABLE" ? "bg-green-100 text-green-700 border border-green-300"
+                  : "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="divide-y divide-border">
+          {filtered.map(patient => (
+            <motion.div key={patient.id} layout
+              className="p-4 hover:bg-muted/30 transition-all cursor-pointer group"
+              onClick={() => setSelectedPatient(patient)}>
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-black flex-shrink-0 border ${statusColor(patient.status)}`}>
+                  {patient.avatar}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-foreground font-semibold">{patient.name}</span>
+                    <span className="text-muted-foreground text-sm">({patient.age})</span>
+                    {patient.status === "CRITICAL" && (
+                      <motion.span animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1, repeat: Infinity }}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-bold border border-destructive/30">
+                        CRITICAL
+                      </motion.span>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground text-sm mt-0.5">{patient.emotion} · {patient.lastSession}</p>
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {patient.tags.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{t}</span>)}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0 space-y-1.5">
+                  <div className="text-xl font-black" style={{ color: patient.riskScore > 70 ? "hsl(var(--destructive))" : patient.riskScore > 50 ? "#F59E0B" : "#3A7A52" }}>
+                    {patient.riskScore}%
+                  </div>
+                  <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${patient.riskScore}%`, background: patient.riskScore > 70 ? "hsl(var(--destructive))" : patient.riskScore > 50 ? "#F59E0B" : "#3A7A52" }} />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Risk Score</p>
+                </div>
+                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={e => { e.stopPropagation(); setCallPatient(patient); setShowCall(true); }}
+                    className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                    <Phone size={14} />
+                  </button>
+                  <button onClick={e => e.stopPropagation()}
+                    className="p-2 rounded-xl bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                    <MessageCircle size={14} />
+                  </button>
+                </div>
+                <ChevronRight size={14} className="text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* Patient modal */}
+      <AnimatePresence>
+        {selectedPatient && (
+          <PatientModal
+            patient={selectedPatient}
+            note={psychNotes[selectedPatient.id] || ""}
+            onSaveNote={(note) => setPsychNote(selectedPatient.id, note)}
+            onClose={() => setSelectedPatient(null)}
+            onCall={() => { setCallPatient(selectedPatient); setShowCall(true); setSelectedPatient(null); }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCall && callPatient && (
+          <CallUI type="psychologist" psychName={callPatient.name} onEnd={() => { setShowCall(false); setCallPatient(null); }} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PatientModal({ patient, note, onSaveNote, onClose, onCall }: {
+  patient: typeof PATIENTS[0];
+  note: string;
+  onSaveNote: (n: string) => void;
+  onClose: () => void;
+  onCall: () => void;
+}) {
+  const [ptab, setPtab] = useState("overview");
+  const [editNote, setEditNote] = useState(note);
+  const [overrideMsg, setOverrideMsg] = useState("");
+  const [overrideSent, setOverrideSent] = useState(false);
+
+  const sendOverride = () => {
+    if (!overrideMsg.trim()) return;
+    setOverrideSent(true);
+    setTimeout(() => setOverrideSent(false), 3000);
+    setOverrideMsg("");
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-card border border-border rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-black border ${patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30" : patient.status === "MODERATE" ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-green-100 text-green-700 border-green-300"}`}>
+              {patient.avatar}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-foreground font-serif">{patient.name}</h3>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30" : patient.status === "MODERATE" ? "bg-amber-100 text-amber-700 border-amber-300" : "bg-green-100 text-green-700 border-green-300"}`}>
+                  {patient.status}
+                </span>
+              </div>
+              <div className="flex gap-1 mt-1">
+                {patient.tags.map(t => <span key={t} className="text-[10px] text-muted-foreground">{t}</span>)}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose}><X size={18} className="text-muted-foreground hover:text-foreground" /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 px-5 py-3 border-b border-border flex-shrink-0">
+          {["overview", "chat", "visual", "notes"].map(t => (
+            <button key={t} onClick={() => setPtab(t)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold capitalize transition-all ${ptab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+              {t === "chat" ? "Chat History" : t === "visual" ? "Visual Logs" : t === "notes" ? "My Notes" : "Overview"}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <AnimatePresence mode="wait">
+            {ptab === "overview" && (
+              <motion.div key="ov" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {[{ l: "Risk Score", v: `${patient.riskScore}%`, color: patient.riskScore > 70 ? "text-destructive" : patient.riskScore > 50 ? "text-amber-600" : "text-green-600" },
+                    { l: "Sessions", v: `${patient.sessions}`, color: "text-primary" },
+                    { l: "Age", v: `${patient.age}`, color: "text-foreground" }].map(item => (
+                    <div key={item.l} className="bg-muted/40 rounded-xl p-4 text-center border border-border">
+                      <div className={`text-2xl font-black ${item.color}`}>{item.v}</div>
+                      <div className="text-muted-foreground text-xs mt-1">{item.l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-muted/40 rounded-xl p-4 border border-border space-y-2">
+                  <div className="text-xs font-semibold text-foreground">Current Emotion</div>
+                  <div className="text-sm text-foreground">{patient.emotion}</div>
+                </div>
+                <div className="bg-muted/40 rounded-xl p-4 border border-border space-y-2">
+                  <div className="text-xs font-semibold text-foreground">7-Day Mood Trend</div>
+                  <ResponsiveContainer width="100%" height={80}>
+                    <LineChart data={patient.moodHistory.map((v, i) => ({ day: i + 1, mood: v }))}>
+                      <Line type="monotone" dataKey="mood" stroke="#3A7A52" strokeWidth={2} dot={false} />
+                      <YAxis hide domain={[0, 100]} />
+                      <Tooltip contentStyle={{ fontSize: 10, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="text-xs text-muted-foreground">Last session: {patient.lastSession}</div>
+              </motion.div>
+            )}
+            {ptab === "chat" && (
+              <motion.div key="ch" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+                {[
+                  { role: "ai", text: "Haan yaar, main sun rahi hoon. Aaj kaisa feel ho raha hai?" },
+                  { role: "user", text: "Bahut overwhelmed hoon. Exams ke wajah se neend nahi aa rahi" },
+                  { role: "ai", text: "Samajh sakti hoon. Ye feelings bilkul valid hain. Ek deep breath lo." },
+                  { role: "user", text: "Okay... tried it. Thoda better laga" },
+                  { role: "ai", text: "Perfect! Dekho, tumhara body already respond kar raha hai." },
+                ].map((msg, i) => (
+                  <div key={i} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-xs ${msg.role === "user" ? "bg-primary/20 text-foreground" : "bg-muted text-foreground"}`}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+            {ptab === "visual" && (
+              <motion.div key="vl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+                {[
+                  { time: "10:00", emotion: "Neutral", fatigue: 45, focus: 62, env: "Normal workspace" },
+                  { time: "10:05", emotion: "Anxiety", fatigue: 67, focus: 38, env: "Cluttered desk detected" },
+                  { time: "10:10", emotion: "Suppressed Fear", fatigue: 81, focus: 22, env: "Dark room, poor lighting" },
+                  { time: "10:15", emotion: "Improving", fatigue: 71, focus: 41, env: "Dark room" },
+                ].map((log, i) => (
+                  <div key={i} className="bg-muted/40 rounded-xl p-4 border border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs font-mono">{log.time}</span>
+                      <span className={`text-sm font-semibold ${log.emotion.includes("Anxiety") || log.emotion.includes("Fear") ? "text-destructive" : log.emotion === "Neutral" ? "text-blue-500" : "text-green-600"}`}>{log.emotion}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[{ l: "Fatigue", v: log.fatigue, c: "hsl(var(--destructive))" }, { l: "Focus", v: log.focus, c: "#3A7A52" }].map(m => (
+                        <div key={m.l}>
+                          <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>{m.l}</span><span>{m.v}%</span></div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: `${m.v}%`, background: m.c }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-muted-foreground text-xs">{log.env}</p>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+            {ptab === "notes" && (
+              <motion.div key="nt" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+                <textarea value={editNote} onChange={e => setEditNote(e.target.value)}
+                  rows={8} placeholder="Add clinical notes about this patient..."
+                  className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
+                <button onClick={() => onSaveNote(editNote)}
+                  className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity">
+                  Save Notes
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Actions */}
+        <div className="p-4 border-t border-border flex-shrink-0 space-y-2">
+          {/* Session override */}
+          <div className="flex gap-2">
+            <input value={overrideMsg} onChange={e => setOverrideMsg(e.target.value)}
+              placeholder="Override session message..."
+              className="flex-1 text-xs px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 placeholder-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              onKeyDown={e => e.key === "Enter" && sendOverride()}
+            />
+            <button onClick={sendOverride} className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-semibold hover:bg-amber-600 transition-colors flex items-center gap-1">
+              <Zap size={12} /> Override
+            </button>
+            {overrideSent && <span className="flex items-center gap-1 text-xs text-green-600"><CheckCircle size={12} /> Sent</span>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onCall} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+              <Phone size={14} /> Call Patient
+            </button>
+            <button className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors flex items-center justify-center gap-2">
+              <MessageCircle size={14} /> Message
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── ANALYTICS TAB (PSYCH) ───────────────────────────────────────────────────
+function AnalyticsTab() {
+  const riskDist = [
+    { name: "Critical", value: 1, color: "hsl(var(--destructive))" },
+    { name: "Moderate", value: 2, color: "#F59E0B" },
+    { name: "Stable", value: 1, color: "#3A7A52" },
+  ];
+  const sessionFreq = [
+    { day: "Mon", sessions: 4 }, { day: "Tue", sessions: 6 }, { day: "Wed", sessions: 3 },
+    { day: "Thu", sessions: 8 }, { day: "Fri", sessions: 5 }, { day: "Sat", sessions: 2 }, { day: "Sun", sessions: 1 },
+  ];
+  const outcomeData = [
+    { month: "Jan", improved: 12, stable: 5, declined: 2 },
+    { month: "Feb", improved: 15, stable: 4, declined: 1 },
+    { month: "Mar", improved: 18, stable: 6, declined: 3 },
+    { month: "Apr", improved: 20, stable: 3, declined: 1 },
+    { month: "May", improved: 16, stable: 7, declined: 2 },
+  ];
+
+  return (
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-black font-serif text-foreground">Practice Analytics</h1>
+
+      {/* Overview cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Sessions This Week", value: "29", icon: Activity, color: "text-primary" },
+          { label: "Avg Session Length", value: "43m", icon: Clock, color: "text-blue-500" },
+          { label: "Improvement Rate", value: "78%", icon: TrendingUp, color: "text-green-600" },
+          { label: "Active Patients", value: "4", icon: Users, color: "text-amber-600" },
+        ].map(stat => (
+          <div key={stat.label} className="bg-card border border-border rounded-2xl p-4">
+            <stat.icon size={18} className={`${stat.color} mb-2`} />
+            <p className={`text-3xl font-black ${stat.color}`}>{stat.value}</p>
+            <p className="text-muted-foreground text-xs mt-1">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Risk distribution pie */}
+        <div className="bg-card border border-border rounded-2xl p-5">
+          <h3 className="font-bold text-foreground mb-4 font-serif">Risk Distribution</h3>
+          <div className="flex items-center gap-6">
+            <ResponsiveContainer width={120} height={120}>
+              <PieChart>
+                <Pie data={riskDist} cx={55} cy={55} innerRadius={35} outerRadius={55} dataKey="value">
+                  {riskDist.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-3">
+              {riskDist.map(item => (
+                <div key={item.name} className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: item.color }} />
+                  <span className="text-sm text-foreground">{item.name}</span>
+                  <span className="ml-auto text-sm font-bold text-foreground">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Session frequency */}
+        <div className="bg-card border border-border rounded-2xl p-5">
+          <h3 className="font-bold text-foreground mb-4 font-serif">Session Frequency</h3>
+          <ResponsiveContainer width="100%" height={150}>
+            <BarChart data={sessionFreq}>
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+              <YAxis hide />
+              <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 11 }} />
+              <Bar dataKey="sessions" fill="#3A7A52" radius={[4, 4, 0, 0]} name="Sessions" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Patient outcomes */}
+        <div className="bg-card border border-border rounded-2xl p-5 lg:col-span-2">
+          <h3 className="font-bold text-foreground mb-4 font-serif">Patient Outcomes Trend</h3>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={outcomeData}>
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+              <YAxis hide />
+              <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 11 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="improved" fill="#3A7A52" radius={[3, 3, 0, 0]} name="Improved" stackId="a" />
+              <Bar dataKey="stable" fill="#F59E0B" radius={[0, 0, 0, 0]} name="Stable" stackId="a" />
+              <Bar dataKey="declined" fill="hsl(var(--destructive))" radius={[0, 0, 3, 3]} name="Declined" stackId="a" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── REPORTS TAB ─────────────────────────────────────────────────────────────
+function ReportsTab() {
+  const [downloading, setDownloading] = useState<number | null>(null);
+  const [filter, setFilter] = useState("All");
+
+  const handleDownload = (id: number) => {
+    setDownloading(id);
+    setTimeout(() => setDownloading(null), 2000);
+  };
+
+  return (
+    <div className="p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-black font-serif text-foreground">Session Reports</h1>
+        <div className="flex items-center gap-2">
+          <Filter size={14} className="text-muted-foreground" />
+          <select value={filter} onChange={e => setFilter(e.target.value)}
+            className="text-sm bg-background border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40">
+            <option>All</option>
+            {PATIENTS.map(p => <option key={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {REPORTS.filter(r => filter === "All" || r.patient === filter).map(report => (
+          <motion.div key={report.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border rounded-2xl p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h3 className="font-bold text-foreground font-serif">{report.patient}</h3>
+                  <span className="text-xs text-muted-foreground">{report.date}</span>
+                  <span className="text-xs text-muted-foreground">{report.duration}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${report.riskChange > 0 ? "bg-destructive/10 text-destructive" : "bg-green-100 text-green-700"}`}>
+                    Risk {report.riskChange > 0 ? "+" : ""}{report.riskChange}%
+                  </span>
+                </div>
+                <p className="text-muted-foreground text-sm mt-2 leading-relaxed">{report.summary}</p>
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                  {report.themes.map(t => <span key={t} className="text-[10px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground">{t}</span>)}
+                </div>
+              </div>
+              <motion.button
+                onClick={() => handleDownload(report.id)}
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary/10 text-primary text-sm font-semibold hover:bg-primary/20 transition-colors flex-shrink-0">
+                {downloading === report.id
+                  ? <><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><RefreshCw size={14} /></motion.div> Downloading...</>
+                  : <><Download size={14} /> Download PDF</>}
+              </motion.button>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── NOTIFICATIONS TAB ───────────────────────────────────────────────────────
+function NotificationsTab({ notifications, setNotifications }: {
+  notifications: typeof NOTIFICATIONS;
+  setNotifications: (n: typeof NOTIFICATIONS) => void;
+}) {
+  const [filter, setFilter] = useState("All");
+
+  const markRead = (id: number) =>
+    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+
+  const markAllRead = () =>
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+
+  const filtered = filter === "All" ? notifications
+    : filter === "Unread" ? notifications.filter(n => !n.read)
+    : notifications.filter(n => n.type === "critical");
+
+  const typeIcon = (type: string) =>
+    type === "critical" ? <AlertTriangle size={16} className="text-destructive" />
+    : type === "session" ? <Activity size={16} className="text-primary" />
+    : <Bell size={16} className="text-muted-foreground" />;
+
+  return (
+    <div className="p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-black font-serif text-foreground">Notifications</h1>
+        <button onClick={markAllRead} className="flex items-center gap-1.5 text-sm text-primary hover:opacity-80 transition-opacity">
+          <BellOff size={14} /> Mark all read
+        </button>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-2">
+        {["All", "Unread", "Critical"].map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>
+            {f} {f === "Unread" && notifications.filter(n => !n.read).length > 0 && `(${notifications.filter(n => !n.read).length})`}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {filtered.map(notif => (
+          <motion.div key={notif.id} layout
+            className={`flex items-start gap-4 p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-sm ${notif.read ? "bg-card border-border opacity-70" : "bg-card border-border shadow-sm"}`}
+            onClick={() => markRead(notif.id)}>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${notif.type === "critical" ? "bg-destructive/10" : notif.type === "session" ? "bg-primary/10" : "bg-muted"}`}>
+              {typeIcon(notif.type)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className={`text-sm font-semibold ${notif.read ? "text-muted-foreground" : "text-foreground"}`}>{notif.title}</p>
+                {!notif.read && (
+                  <motion.div animate={notif.type === "critical" ? { opacity: [1, 0.3, 1] } : {}} transition={{ duration: 1.5, repeat: Infinity }}
+                    className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{notif.message}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">{notif.time}</p>
+            </div>
+            {notif.read && <CheckCircle size={14} className="text-muted-foreground flex-shrink-0 mt-1" />}
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── SETTINGS TAB (PSYCH) ────────────────────────────────────────────────────
+function PsychSettingsTab({ licenseId }: { licenseId: string }) {
+  const [available, setAvailable] = useState(true);
+  const [emergencyProtocol, setEmergencyProtocol] = useState(true);
+  const [emailNotifs, setEmailNotifs] = useState(true);
+  const [smsAlerts, setSmsAlerts] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
+    <button onClick={() => onChange(!value)}
+      className={`w-11 h-6 rounded-full relative transition-all ${value ? "bg-amber-500" : "bg-muted"}`}>
+      <motion.div animate={{ x: value ? 23 : 2 }} className="absolute top-1 w-4 h-4 bg-white rounded-full shadow" />
+    </button>
+  );
+
+  return (
+    <div className="p-6 space-y-5 max-w-2xl">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-black font-serif text-foreground">Portal Settings</h1>
+        {saved && (
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center gap-1.5 text-sm text-green-700 bg-green-100 px-3 py-1.5 rounded-full">
+            <CheckCircle size={14} /> Saved
+          </motion.div>
+        )}
+      </div>
+
+      {/* Profile */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted/30">
+          <h3 className="font-bold text-foreground text-sm font-serif">Profile</h3>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 text-xl font-black">
+              {licenseId.slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <p className="font-bold text-foreground font-serif">Dr. Clinical Professional</p>
+              <p className="text-muted-foreground text-sm">License: {licenseId}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Availability */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted/30">
+          <h3 className="font-bold text-foreground text-sm font-serif">Availability</h3>
+        </div>
+        <div className="divide-y divide-border">
+          {[
+            { label: "Available for Calls", sub: "Allow students to call you directly", value: available, set: setAvailable },
+            { label: "Emergency Protocol", sub: "Receive critical patient alerts immediately", value: emergencyProtocol, set: setEmergencyProtocol },
+          ].map(item => (
+            <div key={item.label} className="flex items-center justify-between px-5 py-3.5">
+              <div>
+                <p className="text-sm font-medium text-foreground">{item.label}</p>
+                <p className="text-xs text-muted-foreground">{item.sub}</p>
+              </div>
+              <Toggle value={item.value} onChange={item.set} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted/30">
+          <h3 className="font-bold text-foreground text-sm font-serif">Notification Preferences</h3>
+        </div>
+        <div className="divide-y divide-border">
+          {[
+            { label: "Email Notifications", sub: "Session summaries and alerts via email", value: emailNotifs, set: setEmailNotifs },
+            { label: "SMS Alerts", sub: "Critical alerts via text message", value: smsAlerts, set: setSmsAlerts },
+          ].map(item => (
+            <div key={item.label} className="flex items-center justify-between px-5 py-3.5">
+              <div>
+                <p className="text-sm font-medium text-foreground">{item.label}</p>
+                <p className="text-xs text-muted-foreground">{item.sub}</p>
+              </div>
+              <Toggle value={item.value} onChange={item.set} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button onClick={save}
+        className="w-full py-3.5 rounded-2xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20">
+        Save Settings
+      </button>
+    </div>
+  );
+}

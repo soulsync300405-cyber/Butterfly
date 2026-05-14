@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "SoulSync"
+version = "1.0.0"
+id = "artifacts/soulsync"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19766
+
+[services.development]
+run = "pnpm --filter @workspace/soulsync run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/soulsync", "run", "build" ]
+publicDir = "artifacts/soulsync/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19766"
+BASE_PATH = "/"
