@@ -706,15 +706,306 @@ function LearnTab() {
 function SkipBackIcon() { return <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>; }
 function SkipFwdIcon() { return <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>; }
 
+// ─── PSYCH MESSAGING MODAL ───────────────────────────────────────────────────
+type PsychMessage = { id: number; role: "user" | "psych"; text: string; time: string };
+type BookingRecord = { pid: number; slot: string; confirmed: boolean };
+
+const PSYCH_REPLIES: Record<number, string[]> = {
+  1: [
+    "Hello! Thanks for reaching out. How have you been feeling since our last session?",
+    "That sounds really difficult. Would you like to schedule some time to talk through this properly?",
+    "I hear you. Let's explore that further — sometimes putting feelings into words is the first step.",
+    "That's a great insight. Keep noticing those patterns — they tell us a lot.",
+    "I'm here whenever you need. Don't hesitate to message anytime between sessions.",
+  ],
+  2: [
+    "Hi there! Good to hear from you. What's been on your mind lately?",
+    "Intrusive thoughts can feel overwhelming, but remember — a thought is just a thought, not a fact.",
+    "Try the 'notice and release' technique we discussed. How did it go last time?",
+    "Progress isn't always linear. You're doing better than you think.",
+    "Let's book a session to work through this together in more depth.",
+  ],
+  3: [
+    "Hi! Glad you messaged. What's been happening with your stress levels this week?",
+    "Stress is normal, but when it builds up, it needs an outlet. Have you tried the breathing exercises?",
+    "That's completely understandable given what you're dealing with. You're handling it well.",
+    "Small steps every day — that's what builds resilience. You're on the right track.",
+    "Let me know when you'd like to book a session and we'll dive deeper.",
+  ],
+  4: [
+    "Good to hear from you. How are you holding up?",
+    "Resilience isn't about never struggling — it's about how you respond when you do. And you're responding.",
+    "That takes real courage to acknowledge. I'm proud of how far you've come.",
+    "Trauma responses are the nervous system protecting itself. Understanding that changes everything.",
+    "Message anytime. My door — and inbox — is always open.",
+  ],
+};
+
+function PsychMessagingModal({
+  psych,
+  messages,
+  onSend,
+  onClose,
+}: {
+  psych: typeof PSYCHOLOGISTS[0];
+  messages: PsychMessage[];
+  onSend: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const send = () => {
+    if (!text.trim()) return;
+    onSend(text.trim());
+    setText("");
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}>
+      <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 60, opacity: 0 }} transition={{ type: "spring", stiffness: 280, damping: 28 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-card border border-border rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl flex flex-col"
+        style={{ height: "min(600px, 92vh)" }}>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border flex-shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-base font-black text-primary flex-shrink-0">
+            {psych.avatar}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-foreground font-serif text-sm">{psych.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }}
+                className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <span className="text-green-600 text-xs">{psych.available ? "Online" : "Offline"}</span>
+              <span className="text-muted-foreground text-xs">· {psych.specialization}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-muted flex items-center justify-center transition-colors flex-shrink-0">
+            <X size={16} className="text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-8">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-xl font-black text-primary">{psych.avatar}</div>
+              <div>
+                <p className="font-semibold text-foreground font-serif">{psych.name}</p>
+                <p className="text-muted-foreground text-xs mt-1 max-w-[200px]">Send a message to start the conversation. Replies within a few hours.</p>
+              </div>
+            </div>
+          )}
+          {messages.map(msg => (
+            <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+              {msg.role === "psych" && (
+                <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-black text-primary flex-shrink-0 mt-auto">
+                  {psych.avatar}
+                </div>
+              )}
+              <div className={`flex flex-col gap-1 max-w-[75%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-tr-sm"
+                    : "bg-muted text-foreground rounded-tl-sm border border-border"
+                }`}>
+                  {msg.text}
+                </div>
+                <span className="text-[10px] text-muted-foreground px-1">{msg.time}</span>
+              </div>
+            </motion.div>
+          ))}
+          <div ref={endRef} />
+        </div>
+
+        {/* Input */}
+        <div className="px-4 py-3 border-t border-border flex-shrink-0">
+          <div className="flex items-center gap-2 bg-background border border-border rounded-2xl px-3 py-2">
+            <input value={text} onChange={e => setText(e.target.value)}
+              placeholder={`Message ${psych.name}...`}
+              className="flex-1 bg-transparent text-foreground placeholder-muted-foreground text-sm focus:outline-none"
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+            />
+            <button onClick={send}
+              className={`p-2 rounded-xl transition-all ${text.trim() ? "bg-primary text-primary-foreground hover:opacity-90" : "text-muted-foreground"}`}>
+              <Send size={15} />
+            </button>
+          </div>
+          <p className="text-center text-[10px] text-muted-foreground mt-1.5">Messages are end-to-end encrypted</p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── BOOKING MODAL ────────────────────────────────────────────────────────────
+function BookingModal({
+  psych,
+  onConfirm,
+  onClose,
+}: {
+  psych: typeof PSYCHOLOGISTS[0];
+  onConfirm: (slot: string, notes: string) => void;
+  onClose: () => void;
+}) {
+  const [selectedSlot, setSelectedSlot] = useState("");
+  const [sessionType, setSessionType] = useState<"video" | "audio" | "chat">("video");
+  const [notes, setNotes] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+
+  const handleConfirm = () => {
+    if (!selectedSlot) return;
+    setConfirmed(true);
+    setTimeout(() => { onConfirm(selectedSlot, notes); }, 1800);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={!confirmed ? onClose : undefined}>
+      <motion.div initial={{ scale: 0.95, y: 16 }} animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 16 }} transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
+
+        <AnimatePresence mode="wait">
+          {!confirmed ? (
+            <motion.div key="form" initial={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-5 space-y-5">
+              {/* Psych info */}
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-lg font-black text-primary flex-shrink-0">
+                  {psych.avatar}
+                </div>
+                <div>
+                  <p className="font-bold text-foreground font-serif">{psych.name}</p>
+                  <p className="text-muted-foreground text-xs">{psych.specialization}</p>
+                </div>
+                <button onClick={onClose} className="ml-auto w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center">
+                  <X size={14} className="text-muted-foreground" />
+                </button>
+              </div>
+
+              {/* Session type */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">Session type</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: "video", label: "Video", icon: "📹" },
+                    { id: "audio", label: "Voice", icon: "🎙️" },
+                    { id: "chat", label: "Chat", icon: "💬" },
+                  ] as const).map(t => (
+                    <button key={t.id} onClick={() => setSessionType(t.id)}
+                      className={`py-3 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${sessionType === t.id ? "border-primary bg-primary/8" : "border-border bg-background hover:border-primary/30"}`}>
+                      <span className="text-lg">{t.icon}</span>
+                      <span className={`text-xs font-semibold ${sessionType === t.id ? "text-primary" : "text-muted-foreground"}`}>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Slot picker */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">Pick a slot</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {SCHEDULE_SLOTS.map(slot => (
+                    <button key={slot} onClick={() => setSelectedSlot(slot)}
+                      className={`py-2.5 px-3 rounded-xl border-2 text-left transition-all ${selectedSlot === slot ? "border-primary bg-primary/8" : "border-border bg-background hover:border-primary/30"}`}>
+                      <p className={`text-xs font-semibold ${selectedSlot === slot ? "text-primary" : "text-foreground"}`}>
+                        {slot.split(" ").slice(0, 1).join(" ")}
+                      </p>
+                      <p className={`text-[11px] ${selectedSlot === slot ? "text-primary/70" : "text-muted-foreground"}`}>
+                        {slot.split(" ").slice(1).join(" ")}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">Notes for the session <span className="text-muted-foreground font-normal">(optional)</span></p>
+                <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                  rows={2} placeholder="What would you like to talk about? e.g. exam anxiety, sleep issues..."
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
+              </div>
+
+              <button onClick={handleConfirm} disabled={!selectedSlot}
+                className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-all ${selectedSlot ? "bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
+                {selectedSlot ? `Confirm — ${selectedSlot}` : "Select a slot to continue"}
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div key="confirmed" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+              className="p-8 flex flex-col items-center text-center gap-4">
+              <motion.div animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                transition={{ duration: 0.6 }} className="text-5xl">🎉</motion.div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black font-serif text-foreground">Session Booked!</h3>
+                <p className="text-muted-foreground text-sm">You're confirmed with <span className="font-semibold text-foreground">{psych.name}</span></p>
+              </div>
+              <div className="w-full bg-primary/8 border border-primary/20 rounded-xl p-4 space-y-2 text-left">
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar size={14} className="text-primary flex-shrink-0" />
+                  <span className="font-semibold text-foreground">{selectedSlot}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-base">{sessionType === "video" ? "📹" : sessionType === "audio" ? "🎙️" : "💬"}</span>
+                  <span className="text-muted-foreground capitalize">{sessionType} session</span>
+                </div>
+                {notes && (
+                  <div className="text-xs text-muted-foreground border-t border-border/50 pt-2 mt-2">"{notes}"</div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">A reminder will be sent 30 minutes before your session.</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── PSYCH TAB ───────────────────────────────────────────────────────────────
 function PsychTab() {
   const [showCall, setShowCall] = useState(false);
   const [callPsych, setCallPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState("");
-  const [booked, setBooked] = useState<number | null>(null);
-  const [msgOpen, setMsgOpen] = useState<number | null>(null);
-  const [msgText, setMsgText] = useState("");
-  const [messages, setMessages] = useState<{ pid: number; texts: string[] }>({ pid: 0, texts: [] });
+  const [msgPsych, setMsgPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
+  const [bookPsych, setBookPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
+  const [bookedSlots, setBookedSlots] = useState<BookingRecord[]>([]);
+  const [allMessages, setAllMessages] = useState<Record<number, PsychMessage[]>>({});
+  const replyTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+
+  const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const sendMessage = (pid: number, text: string) => {
+    const userMsg: PsychMessage = { id: Date.now(), role: "user", text, time: getTime() };
+    setAllMessages(prev => ({ ...prev, [pid]: [...(prev[pid] || []), userMsg] }));
+
+    if (replyTimers.current[pid]) clearTimeout(replyTimers.current[pid]);
+    replyTimers.current[pid] = setTimeout(() => {
+      const replies = PSYCH_REPLIES[pid] || PSYCH_REPLIES[1];
+      const existing = allMessages[pid]?.filter(m => m.role === "user").length || 0;
+      const replyText = replies[existing % replies.length];
+      const replyMsg: PsychMessage = { id: Date.now() + 1, role: "psych", text: replyText, time: getTime() };
+      setAllMessages(prev => ({ ...prev, [pid]: [...(prev[pid] || []), replyMsg] }));
+    }, 1600 + Math.random() * 1000);
+  };
+
+  const handleBook = (slot: string, notes: string) => {
+    if (!bookPsych) return;
+    setBookedSlots(prev => [...prev.filter(b => b.pid !== bookPsych.id), { pid: bookPsych.id, slot, confirmed: true }]);
+    setTimeout(() => setBookPsych(null), 2200);
+  };
+
+  const getBooking = (pid: number) => bookedSlots.find(b => b.pid === pid);
 
   return (
     <div className="p-6 space-y-6">
@@ -735,98 +1026,104 @@ function PsychTab() {
 
       {/* Psychologist cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {PSYCHOLOGISTS.map(p => (
-          <motion.div key={p.id} whileHover={{ y: -2 }}
-            className="bg-card border border-border rounded-2xl p-5 space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-xl font-black text-primary flex-shrink-0">
-                {p.avatar}
+        {PSYCHOLOGISTS.map(p => {
+          const booking = getBooking(p.id);
+          const unread = (allMessages[p.id] || []).filter(m => m.role === "psych").length;
+          return (
+            <motion.div key={p.id} whileHover={{ y: -2 }}
+              className="bg-card border border-border rounded-2xl p-5 space-y-4">
+              <div className="flex items-start gap-4">
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-xl font-black text-primary flex-shrink-0">
+                    {p.avatar}
+                  </div>
+                  {unread > 0 && (
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+                      <span className="text-[9px] text-primary-foreground font-bold">{unread}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-foreground font-serif">{p.name}</h3>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${p.available ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"}`}>
+                      {p.available ? "Available" : "Busy"}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground text-sm">{p.specialization}</p>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Star size={11} className="text-amber-500" /> {p.rating}</span>
+                    <span>{p.sessions} sessions</span>
+                  </div>
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {p.languages.map(l => <span key={l} className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{l}</span>)}
+                  </div>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-foreground font-serif">{p.name}</h3>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${p.available ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"}`}>
-                    {p.available ? "Available" : "Busy"}
-                  </span>
-                </div>
-                <p className="text-muted-foreground text-sm">{p.specialization}</p>
-                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><Star size={11} className="text-amber-500" /> {p.rating}</span>
-                  <span>{p.sessions} sessions</span>
-                </div>
-                <div className="flex gap-1 mt-1.5 flex-wrap">
-                  {p.languages.map(l => <span key={l} className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{l}</span>)}
-                </div>
-              </div>
-            </div>
 
-            {/* Schedule slots */}
-            <div>
-              <p className="text-xs font-semibold text-foreground mb-2">Available Slots</p>
-              <div className="flex gap-1.5 flex-wrap">
-                {SCHEDULE_SLOTS.slice(0, 4).map(slot => (
-                  <button key={slot} onClick={() => setSelectedSlot(slot === selectedSlot ? "" : slot)}
-                    className={`text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${selectedSlot === slot ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border bg-background text-muted-foreground hover:border-primary/40"}`}>
-                    {slot}
+              {/* Booking confirmation badge */}
+              {booking && (
+                <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2.5">
+                  <CheckCircle size={15} className="text-primary flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Session booked</p>
+                    <p className="text-[10px] text-muted-foreground">{booking.slot}</p>
+                  </div>
+                  <button onClick={() => setBookedSlots(prev => prev.filter(b => b.pid !== p.id))}
+                    className="ml-auto text-muted-foreground hover:text-foreground">
+                    <X size={12} />
                   </button>
-                ))}
-              </div>
-            </div>
-
-            {booked === p.id && (
-              <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
-                <CheckCircle size={14} className="text-green-600" />
-                <span className="text-xs text-green-700 font-medium">Session booked with {p.name}!</span>
-              </motion.div>
-            )}
-
-            <div className="flex gap-2">
-              <button onClick={() => { setCallPsych(p); setShowCall(true); }}
-                disabled={!p.available}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${p.available ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
-                <Phone size={13} /> Call Now
-              </button>
-              <button onClick={() => { if (selectedSlot) setBooked(p.id); }}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors">
-                <Calendar size={13} /> Book Session
-              </button>
-              <button onClick={() => setMsgOpen(msgOpen === p.id ? null : p.id)}
-                className="px-3 py-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                <MessageCircle size={14} />
-              </button>
-            </div>
-
-            {/* Inline message thread */}
-            <AnimatePresence>
-              {msgOpen === p.id && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-t border-border pt-3 space-y-2">
-                  <div className="max-h-28 overflow-y-auto space-y-2">
-                    {messages.pid === p.id && messages.texts.map((t, i) => (
-                      <div key={i} className="flex gap-2">
-                        <div className="flex-1 bg-primary/5 border border-primary/15 rounded-xl px-3 py-2 text-xs">{t}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input value={msgText} onChange={e => setMsgText(e.target.value)}
-                      placeholder={`Message ${p.name}...`}
-                      className="flex-1 text-xs bg-background border border-border rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary/40"
-                      onKeyDown={e => { if (e.key === "Enter" && msgText.trim()) { setMessages({ pid: p.id, texts: [...(messages.pid === p.id ? messages.texts : []), msgText] }); setMsgText(""); } }}
-                    />
-                    <button onClick={() => { if (msgText.trim()) { setMessages({ pid: p.id, texts: [...(messages.pid === p.id ? messages.texts : []), msgText] }); setMsgText(""); } }}
-                      className="px-3 py-2 bg-primary text-primary-foreground rounded-xl text-xs hover:opacity-90">
-                      <Send size={12} />
-                    </button>
-                  </div>
                 </motion.div>
               )}
-            </AnimatePresence>
-          </motion.div>
-        ))}
+
+              <div className="flex gap-2">
+                <button onClick={() => { setCallPsych(p); setShowCall(true); }}
+                  disabled={!p.available}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${p.available ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
+                  <Phone size={13} /> Call Now
+                </button>
+                <button onClick={() => setBookPsych(p)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-all ${booking ? "border-primary/30 bg-primary/5 text-primary" : "border-border text-foreground hover:bg-muted/50"}`}>
+                  <Calendar size={13} /> {booking ? "Rebook" : "Book Session"}
+                </button>
+                <button onClick={() => setMsgPsych(p)}
+                  className="relative px-3 py-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                  <MessageCircle size={14} />
+                  {unread > 0 && (
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-primary rounded-full" />
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
 
+      {/* Messaging modal */}
+      <AnimatePresence>
+        {msgPsych && (
+          <PsychMessagingModal
+            psych={msgPsych}
+            messages={allMessages[msgPsych.id] || []}
+            onSend={(text) => sendMessage(msgPsych.id, text)}
+            onClose={() => setMsgPsych(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Booking modal */}
+      <AnimatePresence>
+        {bookPsych && (
+          <BookingModal
+            psych={bookPsych}
+            onConfirm={handleBook}
+            onClose={() => setBookPsych(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Call UI */}
       <AnimatePresence>
         {showCall && callPsych && (
           <CallUI type="psychologist" psychName={callPsych.name.replace("Dr. ", "")} onEnd={() => { setShowCall(false); setCallPsych(null); }} />
