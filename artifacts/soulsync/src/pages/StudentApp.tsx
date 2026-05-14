@@ -853,7 +853,7 @@ function BookingModal({
   onClose,
 }: {
   psych: typeof PSYCHOLOGISTS[0];
-  onConfirm: (slot: string, notes: string) => void;
+  onConfirm: (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => void;
   onClose: () => void;
 }) {
   const [selectedSlot, setSelectedSlot] = useState("");
@@ -864,7 +864,7 @@ function BookingModal({
   const handleConfirm = () => {
     if (!selectedSlot) return;
     setConfirmed(true);
-    setTimeout(() => { onConfirm(selectedSlot, notes); }, 1800);
+    setTimeout(() => { onConfirm(selectedSlot, notes, sessionType); }, 1800);
   };
 
   return (
@@ -979,33 +979,23 @@ function PsychTab() {
   const [callPsych, setCallPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
   const [msgPsych, setMsgPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
   const [bookPsych, setBookPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
-  const [bookedSlots, setBookedSlots] = useState<BookingRecord[]>([]);
-  const [allMessages, setAllMessages] = useState<Record<number, PsychMessage[]>>({});
-  const replyTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const { user, psychMessages, addPsychMessage, psychBookings, setPsychBooking, removePsychBooking } = useStore();
 
   const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const sendMessage = (pid: number, text: string) => {
-    const userMsg: PsychMessage = { id: Date.now(), role: "user", text, time: getTime() };
-    setAllMessages(prev => ({ ...prev, [pid]: [...(prev[pid] || []), userMsg] }));
-
-    if (replyTimers.current[pid]) clearTimeout(replyTimers.current[pid]);
-    replyTimers.current[pid] = setTimeout(() => {
-      const replies = PSYCH_REPLIES[pid] || PSYCH_REPLIES[1];
-      const existing = allMessages[pid]?.filter(m => m.role === "user").length || 0;
-      const replyText = replies[existing % replies.length];
-      const replyMsg: PsychMessage = { id: Date.now() + 1, role: "psych", text: replyText, time: getTime() };
-      setAllMessages(prev => ({ ...prev, [pid]: [...(prev[pid] || []), replyMsg] }));
-    }, 1600 + Math.random() * 1000);
+    addPsychMessage(pid, { id: Date.now(), role: "student", text, time: getTime() });
   };
 
-  const handleBook = (slot: string, notes: string) => {
+  const handleBook = (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => {
     if (!bookPsych) return;
-    setBookedSlots(prev => [...prev.filter(b => b.pid !== bookPsych.id), { pid: bookPsych.id, slot, confirmed: true }]);
+    setPsychBooking(bookPsych.id, { slot, notes, sessionType });
     setTimeout(() => setBookPsych(null), 2200);
   };
 
-  const getBooking = (pid: number) => bookedSlots.find(b => b.pid === pid);
+  const getBooking = (pid: number) => psychBookings[pid] ?? null;
+  const getMessages = (pid: number): PsychMessage[] =>
+    (psychMessages[pid] || []).map(m => ({ ...m, role: m.role === "student" ? "user" : "psych" } as PsychMessage));
 
   return (
     <div className="p-6 space-y-6">
@@ -1028,7 +1018,8 @@ function PsychTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {PSYCHOLOGISTS.map(p => {
           const booking = getBooking(p.id);
-          const unread = (allMessages[p.id] || []).filter(m => m.role === "psych").length;
+          const msgs = getMessages(p.id);
+          const unread = msgs.filter(m => m.role === "psych").length;
           return (
             <motion.div key={p.id} whileHover={{ y: -2 }}
               className="bg-card border border-border rounded-2xl p-5 space-y-4">
@@ -1070,7 +1061,7 @@ function PsychTab() {
                     <p className="text-xs font-semibold text-foreground">Session booked</p>
                     <p className="text-[10px] text-muted-foreground">{booking.slot}</p>
                   </div>
-                  <button onClick={() => setBookedSlots(prev => prev.filter(b => b.pid !== p.id))}
+                  <button onClick={() => removePsychBooking(p.id)}
                     className="ml-auto text-muted-foreground hover:text-foreground">
                     <X size={12} />
                   </button>
@@ -1105,7 +1096,7 @@ function PsychTab() {
         {msgPsych && (
           <PsychMessagingModal
             psych={msgPsych}
-            messages={allMessages[msgPsych.id] || []}
+            messages={getMessages(msgPsych.id)}
             onSend={(text) => sendMessage(msgPsych.id, text)}
             onClose={() => setMsgPsych(null)}
           />

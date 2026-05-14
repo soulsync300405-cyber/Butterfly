@@ -1,34 +1,44 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, AlertTriangle, Activity, TrendingUp, BarChart2, FileText,
   Bell, Settings, LogOut, Phone, MessageCircle, Zap, ChevronRight,
   X, CheckCircle, RefreshCw, Shield, Clock, Download, Filter,
-  Eye, Star, BellOff
+  Eye, Star, BellOff, Send, ArrowLeft, Inbox
 } from "lucide-react";
-import { PATIENTS, NOTIFICATIONS, REPORTS, MOOD_DATA } from "@/lib/data";
+import { PATIENTS, NOTIFICATIONS, REPORTS } from "@/lib/data";
 import { CallUI } from "@/components/CallUI";
 import { useStore } from "@/lib/store";
+import type { SharedMessage } from "@/lib/store";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
 } from "recharts";
 
-type PsychTab = "triage" | "analytics" | "reports" | "notifications" | "settings";
+type PsychTab = "triage" | "messages" | "analytics" | "reports" | "notifications" | "settings";
 
 export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onLogout: () => void }) {
   const [tab, setTab] = useState<PsychTab>("triage");
   const [selectedPatient, setSelectedPatient] = useState<typeof PATIENTS[0] | null>(null);
   const [notifications, setNotifications] = useState(NOTIFICATIONS);
+  const { psychMessages, psychLastRead } = useStore();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Count unread student messages across all conversations
+  const unreadMessages = Object.entries(psychMessages).reduce((total, [psychIdStr, msgs]) => {
+    const psychId = Number(psychIdStr);
+    const lastReadId = psychLastRead[psychId] ?? 0;
+    return total + msgs.filter(m => m.role === "student" && m.id > lastReadId).length;
+  }, 0);
+
   const NAV = [
-    { id: "triage", label: "Patient Triage", icon: Users },
-    { id: "analytics", label: "Analytics", icon: BarChart2 },
-    { id: "reports", label: "Reports", icon: FileText },
-    { id: "notifications", label: "Notifications", icon: Bell, badge: unreadCount },
-    { id: "settings", label: "Settings", icon: Settings },
+    { id: "triage",        label: "Patient Triage",   icon: Users },
+    { id: "messages",      label: "Messages",          icon: MessageCircle, badge: unreadMessages },
+    { id: "analytics",     label: "Analytics",         icon: BarChart2 },
+    { id: "reports",       label: "Reports",           icon: FileText },
+    { id: "notifications", label: "Notifications",     icon: Bell, badge: unreadCount },
+    { id: "settings",      label: "Settings",          icon: Settings },
   ] as const;
 
   return (
@@ -50,7 +60,11 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
           {NAV.map(item => (
             <button key={item.id} onClick={() => setTab(item.id as PsychTab)}
               data-testid={`nav-psych-${item.id}`}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${tab === item.id ? "bg-amber-500/15 text-amber-700 border border-amber-500/25 font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${
+                tab === item.id
+                  ? "bg-amber-500/15 text-amber-700 border border-amber-500/25 font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}>
               <item.icon size={15} />
               {item.label}
               {"badge" in item && (item.badge as number) > 0 && (
@@ -68,18 +82,280 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
       </aside>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className={`flex-1 ${tab === "messages" ? "overflow-hidden" : "overflow-y-auto"}`}>
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }} className="min-h-full">
-            {tab === "triage" && <TriageTab selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} />}
-            {tab === "analytics" && <AnalyticsTab />}
-            {tab === "reports" && <ReportsTab />}
+            exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }}
+            className={tab === "messages" ? "h-full" : "min-h-full"}>
+            {tab === "triage"        && <TriageTab selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} />}
+            {tab === "messages"      && <MessagesTab />}
+            {tab === "analytics"     && <AnalyticsTab />}
+            {tab === "reports"       && <ReportsTab />}
             {tab === "notifications" && <NotificationsTab notifications={notifications} setNotifications={setNotifications} />}
-            {tab === "settings" && <PsychSettingsTab licenseId={licenseId} />}
+            {tab === "settings"      && <PsychSettingsTab licenseId={licenseId} />}
           </motion.div>
         </AnimatePresence>
       </main>
+    </div>
+  );
+}
+
+// ─── MESSAGES TAB ─────────────────────────────────────────────────────────────
+function MessagesTab() {
+  const { psychMessages, addPsychMessage, markPsychRead } = useStore();
+  const [activePsychId, setActivePsychId] = useState<number | null>(null);
+  const [input, setInput] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+
+  // Psychologists who have received at least one message
+  const activeConversations = PATIENTS.map((patient, idx) => {
+    // We map patients → psych IDs 1-4 for demo (each patient "talks" to psych with matching id)
+    const psychId = idx + 1;
+    const msgs = psychMessages[psychId] || [];
+    return { patient, psychId, msgs };
+  }).filter(c => c.msgs.length > 0);
+
+  // Show a placeholder for psychs who haven't been messaged yet
+  const allConversations = PATIENTS.map((patient, idx) => ({
+    patient,
+    psychId: idx + 1,
+    msgs: psychMessages[idx + 1] || [],
+  }));
+
+  useEffect(() => {
+    if (activePsychId !== null) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [psychMessages, activePsychId]);
+
+  const openConversation = (psychId: number) => {
+    setActivePsychId(psychId);
+    markPsychRead(psychId);
+  };
+
+  const sendReply = () => {
+    if (!input.trim() || activePsychId === null) return;
+    addPsychMessage(activePsychId, {
+      id: Date.now(),
+      role: "psych",
+      text: input.trim(),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    });
+    setInput("");
+  };
+
+  const activeConvo = activePsychId !== null
+    ? allConversations.find(c => c.psychId === activePsychId) ?? null
+    : null;
+
+  const { psychLastRead } = useStore();
+
+  const getUnread = (psychId: number) => {
+    const msgs = psychMessages[psychId] || [];
+    const lastId = psychLastRead[psychId] ?? 0;
+    return msgs.filter(m => m.role === "student" && m.id > lastId).length;
+  };
+
+  const getLastMsg = (psychId: number) => {
+    const msgs = psychMessages[psychId] || [];
+    return msgs[msgs.length - 1] ?? null;
+  };
+
+  return (
+    <div className="flex h-full">
+      {/* ── Inbox list ── */}
+      <div className={`flex-shrink-0 border-r border-border bg-card flex flex-col ${activePsychId !== null ? "hidden sm:flex w-72" : "flex w-full sm:w-72"}`}>
+        {/* Header */}
+        <div className="px-4 py-4 border-b border-border">
+          <h2 className="text-lg font-black font-serif text-foreground">Patient Messages</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Direct messages from your patients</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto divide-y divide-border">
+          {allConversations.map(({ patient, psychId, msgs }) => {
+            const last = getLastMsg(psychId);
+            const unread = getUnread(psychId);
+            const isActive = activePsychId === psychId;
+
+            return (
+              <motion.button key={psychId} onClick={() => openConversation(psychId)}
+                whileHover={{ backgroundColor: "hsl(var(--muted)/0.5)" }}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all ${isActive ? "bg-amber-50 border-r-2 border-amber-500" : ""}`}>
+                {/* Avatar */}
+                <div className="relative flex-shrink-0">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black border ${
+                    patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
+                    : patient.status === "MODERATE" ? "bg-amber-100 text-amber-700 border-amber-300"
+                    : "bg-green-100 text-green-700 border-green-300"
+                  }`}>
+                    {patient.avatar}
+                  </div>
+                  {unread > 0 && (
+                    <motion.span animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1.5, repeat: Infinity }}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+                      <span className="text-[9px] text-primary-foreground font-bold">{unread}</span>
+                    </motion.span>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={`text-sm truncate ${unread > 0 ? "font-bold text-foreground" : "font-medium text-foreground"}`}>
+                      {patient.name}
+                    </span>
+                    {last && (
+                      <span className="text-[10px] text-muted-foreground flex-shrink-0">{last.time}</span>
+                    )}
+                  </div>
+                  <p className={`text-xs truncate mt-0.5 ${unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                    {last
+                      ? `${last.role === "psych" ? "You: " : ""}${last.text}`
+                      : <span className="italic text-muted-foreground">No messages yet</span>}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {patient.tags.map(t => (
+                      <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Chat window ── */}
+      {activePsychId !== null && activeConvo ? (
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Chat header */}
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-border bg-card flex-shrink-0">
+            <button onClick={() => setActivePsychId(null)}
+              className="sm:hidden p-1.5 rounded-lg hover:bg-muted transition-colors">
+              <ArrowLeft size={16} className="text-muted-foreground" />
+            </button>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border flex-shrink-0 ${
+              activeConvo.patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
+              : activeConvo.patient.status === "MODERATE" ? "bg-amber-100 text-amber-700 border-amber-300"
+              : "bg-green-100 text-green-700 border-green-300"
+            }`}>
+              {activeConvo.patient.avatar}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-foreground font-serif text-sm">{activeConvo.patient.name}</p>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>{activeConvo.patient.emotion}</span>
+                <span>·</span>
+                <span>{activeConvo.patient.tags.join(", ")}</span>
+                <span className={`font-semibold ${
+                  activeConvo.patient.riskScore > 70 ? "text-destructive"
+                  : activeConvo.patient.riskScore > 50 ? "text-amber-600"
+                  : "text-green-600"
+                }`}>Risk {activeConvo.patient.riskScore}%</span>
+              </div>
+            </div>
+            {activeConvo.patient.status === "CRITICAL" && (
+              <motion.div animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1.2, repeat: Infinity }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 rounded-full border border-destructive/30">
+                <AlertTriangle size={12} className="text-destructive" />
+                <span className="text-xs text-destructive font-bold">CRITICAL</span>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {activeConvo.msgs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
+                <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+                  <MessageCircle size={28} className="text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground font-serif">No messages yet</p>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    {activeConvo.patient.name} hasn't sent a message yet. You can send them a check-in.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              activeConvo.msgs.map((msg: SharedMessage) => (
+                <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                  className={`flex gap-3 ${msg.role === "psych" ? "flex-row-reverse" : ""}`}>
+                  {/* Avatar */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-auto border ${
+                    msg.role === "student"
+                      ? activeConvo.patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
+                        : "bg-amber-100 text-amber-700 border-amber-300"
+                      : "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                  }`}>
+                    {msg.role === "student" ? activeConvo.patient.avatar : "DR"}
+                  </div>
+                  <div className={`flex flex-col gap-1 max-w-[72%] ${msg.role === "psych" ? "items-end" : "items-start"}`}>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      msg.role === "psych"
+                        ? "bg-amber-500 text-white rounded-tr-sm shadow-sm shadow-amber-500/20"
+                        : "bg-card border border-border text-foreground rounded-tl-sm"
+                    }`}>
+                      {msg.text}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground px-1">{msg.time}</span>
+                  </div>
+                </motion.div>
+              ))
+            )}
+            <div ref={endRef} />
+          </div>
+
+          {/* Reply input */}
+          <div className="px-5 py-3 border-t border-border bg-card flex-shrink-0 space-y-2">
+            {/* Quick reply chips */}
+            <div className="flex gap-1.5 flex-wrap">
+              {[
+                "How are you feeling today?",
+                "Let's book a session soon.",
+                "You're doing great. Keep it up.",
+                "I'm reviewing your notes now.",
+              ].map(chip => (
+                <button key={chip} onClick={() => setInput(chip)}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 border border-transparent transition-all">
+                  {chip}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 bg-background border border-border rounded-2xl px-3 py-2">
+              <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                placeholder={`Reply to ${activeConvo.patient.name}...`}
+                className="flex-1 bg-transparent text-foreground placeholder-muted-foreground text-sm focus:outline-none"
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendReply()}
+              />
+              <motion.button onClick={sendReply} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.93 }}
+                className={`p-2 rounded-xl transition-all ${input.trim() ? "bg-amber-500 text-white hover:bg-amber-600" : "text-muted-foreground"}`}>
+                <Send size={15} />
+              </motion.button>
+            </div>
+            <p className="text-center text-[10px] text-muted-foreground">Messages are end-to-end encrypted · HIPAA compliant</p>
+          </div>
+        </div>
+      ) : (
+        /* Empty state when no conversation selected on wide screen */
+        <div className="hidden sm:flex flex-1 items-center justify-center flex-col gap-4 text-center p-8">
+          <div className="w-20 h-20 rounded-3xl bg-amber-50 border border-amber-200 flex items-center justify-center">
+            <Inbox size={36} className="text-amber-500" />
+          </div>
+          <div>
+            <p className="text-xl font-black font-serif text-foreground">Select a conversation</p>
+            <p className="text-muted-foreground text-sm mt-1 max-w-xs">
+              Choose a patient from the left to read their messages and send a reply.
+            </p>
+          </div>
+          {Object.keys(psychMessages).length === 0 && (
+            <div className="bg-muted/40 border border-border rounded-xl px-5 py-3 text-xs text-muted-foreground max-w-xs">
+              No messages yet. When students message you from the app, they will appear here.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
