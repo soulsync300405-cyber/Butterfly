@@ -115,9 +115,22 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
 function ChatTab() {
   const { companion, user } = useStore();
   const [messages, setMessages] = useState([
-    { id: 1, role: "ai", text: `Haan yaar, main sun rahi hoon. Aaj kaisa feel ho raha hai?`, time: "10:02", speaking: false },
-    { id: 2, role: "user", text: "Bahut overwhelmed hoon. Exams ke wajah se neend nahi aa rahi", time: "10:03" },
-    { id: 3, role: "ai", text: "Samajh sakti hoon. Ye feelings bilkul valid hain. Ek kaam karte hain — abhi sirf ek deep breath lo mere saath. Breathe in... 4 counts. Ready?", time: "10:03", speaking: false },
+    { id: 1, role: "ai", text: "Heyy! Good morning ☀️ Aaj uthne ke baad kaisa feel hua pehle? Seedha bol, koi judgment nahi.", time: "9:41", speaking: false },
+    { id: 2, role: "user", text: "Thoda heavy feel ho raha tha. Kal raat fir neend nahi aayi properly", time: "9:42" },
+    { id: 3, role: "ai", text: "Yeh teen din ho gaye jab se tumne mujhe neend ki baat boli hai. Main genuinely concerned hoon 💙 Kya bathroom break ke bina puri raat jaag rahe ho?", time: "9:43", speaking: false },
+    { id: 4, role: "user", text: "Haan yaar. Raat 2 baje tak phone dekhta rehta hoon aur fir anxiety ho jaati hai ki kal ki class miss ho jaayegi", time: "9:44" },
+    { id: 5, role: "ai", text: "Okay ye ek classic loop hai — anxiety → phone → aur zyada anxiety. Ek chota experiment try karein aaj raat? Phone ko 9:30 PM ke baad dusre room mein rakh do. Seedha try karo, kal mujhe batana kaisa raha 🌙", time: "9:45", speaking: false },
+    { id: 6, role: "user", text: "Sach mein koshish karunga. Lekin Asha, aaj Physics ka test hai aur maine sirf ek chapter padha hai", time: "9:47" },
+    { id: 7, role: "ai", text: "Deep breath pehle 🌬️ Ek chapter = already kuch toh hai! Abhi test se pehle 40 min hain — kya main tumhare saath ek quick revision strategy plan karu? Pomodoro style — 25 min focus, 5 min break?", time: "9:48", speaking: false },
+    { id: 8, role: "user", text: "Haan please! Aur mere haath kaamp rahe hain anxiety se", time: "9:49" },
+    { id: 9, role: "ai", text: "Hands kaanpna = body mein adrenaline hai — yahi energy hai jo focused kar sakti hai ✨ Abhi 3 kaam: 1) Paani piyo 2) Ek kaan pe haath rakh ke mahsoos karo 3) Mujhe batao — kaunsa topic confident lagta hai us chapter mein?", time: "9:49", speaking: false },
+    { id: 10, role: "user", text: "Thermodynamics ke laws yaad hain mujhe. Numericals thode weak hain", time: "9:51" },
+    { id: 11, role: "ai", text: "Perfect! Laws solid hain = tumhara foundation strong hai 💪 Numericals ke liye — do key formulas likhke rakh pocket mein. Test ke baad mujhse baat karna, kaisa gaya. I'll be right here 🫶", time: "9:52", speaking: false },
+    { id: 12, role: "user", text: "Thank you Asha. Pata nahi tumse baat kiye bina kya karta main", time: "9:53" },
+    { id: 13, role: "ai", text: "Yahi toh mera kaam hai 🌸 Lekin seriously — tum already bahut kuch khud kar rahe ho. Main sirf yaad dilati hoon jo tum already jaante ho. Ab jao, conquer karo that test! 🔥", time: "9:53", speaking: false },
+    { id: 14, role: "ai", text: "Haan yaar, main sun rahi hoon. Aaj kaisa feel ho raha hai? Test ke baad wala update dena mat bhoolo 😊", time: "10:02", speaking: false },
+    { id: 15, role: "user", text: "Bahut overwhelmed hoon. Exams ke wajah se neend nahi aa rahi", time: "10:03" },
+    { id: 16, role: "ai", text: "Samajh sakti hoon. Ye feelings bilkul valid hain. Ek kaam karte hain — abhi sirf ek deep breath lo mere saath. Breathe in... 4 counts. Ready?", time: "10:03", speaking: false },
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -681,17 +694,60 @@ function LearnTab() {
         {rows.map(row => (
           <div key={row.label}>
             <h3 className="text-white font-bold mb-3 text-sm">{row.label}</h3>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: "none" }}>
+            <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
               {row.courses.map(course => (
-                <motion.button key={course.id} whileHover={{ scale: 1.04, y: -3 }} whileTap={{ scale: 0.97 }}
+                <motion.button key={course.id} whileHover={{ scale: 1.05, y: -4 }} whileTap={{ scale: 0.96 }}
                   onClick={() => setPlaying(course)}
-                  className={`flex-shrink-0 w-44 rounded-xl overflow-hidden bg-gradient-to-br ${course.gradient} cursor-pointer`}>
-                  <div className="p-4 aspect-[4/3] flex flex-col justify-between">
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-white/20 rounded-full self-start backdrop-blur-sm">{course.category}</span>
-                    <div>
-                      <p className="text-white font-bold text-sm leading-tight">{course.title}</p>
-                      <p className="text-white/60 text-xs mt-0.5">{course.episodes} ep · {course.duration}</p>
+                  className="flex-shrink-0 w-40 rounded-2xl overflow-hidden cursor-pointer group shadow-lg shadow-black/40">
+
+                  {/* Thumbnail */}
+                  <div className={`relative bg-gradient-to-br ${course.gradient} aspect-[3/4] flex flex-col items-center justify-center overflow-hidden`}>
+                    {/* Decorative blobs */}
+                    <div className="absolute top-0 right-0 w-20 h-20 rounded-full bg-white/10 -translate-y-1/2 translate-x-1/2" />
+                    <div className="absolute bottom-0 left-0 w-16 h-16 rounded-full bg-black/20 translate-y-1/2 -translate-x-1/2" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full bg-white/5 blur-xl" />
+
+                    {/* Emoji big */}
+                    <motion.div
+                      animate={{ y: [0, -4, 0] }}
+                      transition={{ duration: 3, repeat: Infinity, delay: course.id * 0.3 }}
+                      className="text-5xl drop-shadow-lg z-10 select-none">
+                      {course.emoji}
+                    </motion.div>
+
+                    {/* Badges */}
+                    <div className="absolute top-2 left-2 flex gap-1">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-black/40 text-white rounded-full backdrop-blur-sm">{course.category}</span>
+                      {course.new && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-400 text-black rounded-full">NEW</span>
+                      )}
                     </div>
+
+                    {/* Match score */}
+                    <div className="absolute top-2 right-2">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-green-500/80 text-white rounded-full backdrop-blur-sm">{course.matchScore}% match</span>
+                    </div>
+
+                    {/* Play overlay on hover */}
+                    <motion.div initial={{ opacity: 0 }} whileHover={{ opacity: 1 }}
+                      className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-xl">
+                        <Play size={18} className="text-black ml-0.5" />
+                      </div>
+                    </motion.div>
+
+                    {/* Progress bar (fake) if first course */}
+                    {course.id === 1 && (
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30">
+                        <div className="h-full bg-amber-400 w-[18%]" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info strip */}
+                  <div className="bg-[#181820] px-2.5 py-2">
+                    <p className="text-white text-[11px] font-bold leading-tight line-clamp-2">{course.title}</p>
+                    <p className="text-white/40 text-[10px] mt-0.5">{course.episodes} ep · {course.duration}</p>
                   </div>
                 </motion.button>
               ))}
