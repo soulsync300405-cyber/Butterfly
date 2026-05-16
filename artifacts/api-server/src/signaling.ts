@@ -208,6 +208,22 @@ export function setupSignaling(io: Server) {
       logger.info({ roomId, role, sender }, "Chat message relayed");
     });
 
+    // ─ Direct message relay (outside of call) ────────────────────────────────
+    socket.on("dm-send", ({
+      toName, text, fromName, fromRole,
+    }: { toName: string; text: string; fromName: string; fromRole: "user" | "psych" }) => {
+      const target = [...registry.values()].find(
+        p => p.name.toLowerCase() === toName.toLowerCase()
+      );
+      const msg = { id: Date.now(), fromName, fromRole, text, time: now() };
+      if (target) {
+        io.to(target.socketId).emit("dm-receive", msg);
+      }
+      // Echo back to sender so their own UI updates immediately
+      socket.emit("dm-receive", msg);
+      logger.info({ fromName, toName }, "DM relayed");
+    });
+
     // ─ end-call ──────────────────────────────────────────────────────────────
     socket.on("end-call", ({ roomId }: { roomId: string }) => {
       logger.info({ socketId: socket.id, roomId }, "end-call");
@@ -226,4 +242,13 @@ export function setupSignaling(io: Server) {
       peerRoom.delete(socket.id);
     });
   });
+}
+
+// ── Presence helpers (used by REST routes) ────────────────────────────────────
+export function getOnlineUsers() {
+  return [...registry.values()].filter(p => p.role === "user").map(p => ({ name: p.name, role: p.role }));
+}
+
+export function getOnlinePsychs() {
+  return [...registry.values()].filter(p => p.role === "psychologist").map(p => ({ name: p.name, available: p.available }));
 }

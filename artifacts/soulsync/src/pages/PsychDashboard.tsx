@@ -94,7 +94,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
             exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }}
             className={tab === "messages" ? "h-full" : "min-h-full"}>
             {tab === "triage"        && <TriageTab selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} />}
-            {tab === "messages"      && <MessagesTab />}
+            {tab === "messages"      && <MessagesTab socket={socket} />}
             {tab === "analytics"     && <AnalyticsTab />}
             {tab === "reports"       && <ReportsTab />}
             {tab === "notifications" && <NotificationsTab notifications={notifications} setNotifications={setNotifications} />}
@@ -171,22 +171,17 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
   );
 }
 
+type LiveDM = { id: number; fromName: string; fromRole: "user" | "psych"; text: string; time: string };
+
 // ─── MESSAGES TAB ─────────────────────────────────────────────────────────────
-function MessagesTab() {
-  const { psychMessages, addPsychMessage, markPsychRead } = useStore();
+function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-client").io> | null }) {
+  const { psychMessages, addPsychMessage, markPsychRead, psychLastRead } = useStore();
   const [activePsychId, setActivePsychId] = useState<number | null>(null);
+  const [activeStudentName, setActiveStudentName] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [liveDMs, setLiveDMs] = useState<Record<string, LiveDM[]>>({});
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Psychologists who have received at least one message
-  const activeConversations = PATIENTS.map((patient, idx) => {
-    // We map patients → psych IDs 1-4 for demo (each patient "talks" to psych with matching id)
-    const psychId = idx + 1;
-    const msgs = psychMessages[psychId] || [];
-    return { patient, psychId, msgs };
-  }).filter(c => c.msgs.length > 0);
-
-  // Show a placeholder for psychs who haven't been messaged yet
   const allConversations = PATIENTS.map((patient, idx) => ({
     patient,
     psychId: idx + 1,
@@ -194,32 +189,68 @@ function MessagesTab() {
   }));
 
   useEffect(() => {
-    if (activePsychId !== null) {
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [psychMessages, activePsychId]);
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [psychMessages, liveDMs, activePsychId, activeStudentName]);
 
-  const openConversation = (psychId: number) => {
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (dm: LiveDM) => {
+      if (dm.fromRole !== "user") return;
+      const studentName = dm.fromName;
+      setLiveDMs(prev => ({
+        ...prev,
+        [studentName]: [...(prev[studentName] || []), dm],
+      }));
+    };
+    socket.on("dm-receive", handler);
+    return () => { socket.off("dm-receive", handler); };
+  }, [socket]);
+
+  const openConversation = (psychId: number, studentName?: string) => {
     setActivePsychId(psychId);
+    setActiveStudentName(studentName ?? null);
     markPsychRead(psychId);
   };
 
+  const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   const sendReply = () => {
-    if (!input.trim() || activePsychId === null) return;
-    addPsychMessage(activePsychId, {
-      id: Date.now(),
-      role: "psych",
-      text: input.trim(),
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    });
+    if (!input.trim()) return;
+    const text = input.trim();
     setInput("");
+
+    if (activeStudentName) {
+      const myMsg: LiveDM = { id: Date.now(), fromName: "Dr. Priya Iyer", fromRole: "psych", text, time: getTime() };
+      setLiveDMs(prev => ({
+        ...prev,
+        [activeStudentName]: [...(prev[activeStudentName] || []), myMsg],
+      }));
+      socket?.emit("dm-send", {
+        toName: activeStudentName,
+        text,
+        fromName: "Dr. Priya Iyer",
+        fromRole: "psych",
+      });
+      return;
+    }
+
+    if (activePsychId === null) return;
+    const patientForPsych = allConversations.find(c => c.psychId === activePsychId);
+    addPsychMessage(activePsychId, { id: Date.now(), role: "psych", text, time: getTime() });
+    if (patientForPsych) {
+      socket?.emit("dm-send", {
+        toName: patientForPsych.patient.name,
+        text,
+        fromName: "Dr. Priya Iyer",
+        fromRole: "psych",
+      });
+    }
   };
 
-  const activeConvo = activePsychId !== null
+  const activeConvo = activePsychId !== null && !activeStudentName
     ? allConversations.find(c => c.psychId === activePsychId) ?? null
     : null;
-
-  const { psychLastRead } = useStore();
+  const activeLiveDMs = activeStudentName ? (liveDMs[activeStudentName] || []) : null;
 
   const getUnread = (psychId: number) => {
     const msgs = psychMessages[psychId] || [];
@@ -232,6 +263,8 @@ function MessagesTab() {
     return msgs[msgs.length - 1] ?? null;
   };
 
+  const liveStudentNames = Object.keys(liveDMs);
+
   return (
     <div className="flex h-full">
       {/* ── Inbox list ── */}
@@ -243,16 +276,59 @@ function MessagesTab() {
         </div>
 
         <div className="flex-1 overflow-y-auto divide-y divide-border">
+          {/* Live online students (real-time DMs) */}
+          {liveStudentNames.length > 0 && (
+            <>
+              <div className="px-4 py-2 bg-primary/5">
+                <p className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                  <motion.div className="w-1.5 h-1.5 rounded-full bg-primary" animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
+                  Online Now
+                </p>
+              </div>
+              {liveStudentNames.map(name => {
+                const msgs = liveDMs[name] || [];
+                const last = msgs[msgs.length - 1];
+                const isActive = activeStudentName === name;
+                return (
+                  <motion.button key={`live-${name}`}
+                    onClick={() => { setActiveStudentName(name); setActivePsychId(-1); markPsychRead(-1); }}
+                    whileHover={{ backgroundColor: "hsl(var(--muted)/0.5)" }}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all ${isActive ? "bg-primary/8 border-r-2 border-primary" : ""}`}>
+                    <div className="relative flex-shrink-0">
+                      <div className="w-11 h-11 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-sm font-black text-primary">
+                        {name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-card" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-foreground truncate">{name}</span>
+                        {last && <span className="text-[10px] text-muted-foreground">{last.time}</span>}
+                      </div>
+                      <p className="text-xs truncate text-foreground font-medium mt-0.5">
+                        {last ? last.text : "Just connected"}
+                      </p>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">Live</span>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </>
+          )}
+
+          {/* Mock patient conversations */}
+          <div className="px-4 py-2 bg-muted/50">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Patient Records</p>
+          </div>
           {allConversations.map(({ patient, psychId, msgs }) => {
             const last = getLastMsg(psychId);
             const unread = getUnread(psychId);
-            const isActive = activePsychId === psychId;
+            const isActive = activePsychId === psychId && !activeStudentName;
 
             return (
-              <motion.button key={psychId} onClick={() => openConversation(psychId)}
+              <motion.button key={psychId} onClick={() => { openConversation(psychId); setActiveStudentName(null); }}
                 whileHover={{ backgroundColor: "hsl(var(--muted)/0.5)" }}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all ${isActive ? "bg-amber-50 border-r-2 border-amber-500" : ""}`}>
-                {/* Avatar */}
                 <div className="relative flex-shrink-0">
                   <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black border ${
                     patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
@@ -268,20 +344,13 @@ function MessagesTab() {
                     </motion.span>
                   )}
                 </div>
-
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <span className={`text-sm truncate ${unread > 0 ? "font-bold text-foreground" : "font-medium text-foreground"}`}>
-                      {patient.name}
-                    </span>
-                    {last && (
-                      <span className="text-[10px] text-muted-foreground flex-shrink-0">{last.time}</span>
-                    )}
+                    <span className={`text-sm truncate ${unread > 0 ? "font-bold text-foreground" : "font-medium text-foreground"}`}>{patient.name}</span>
+                    {last && <span className="text-[10px] text-muted-foreground flex-shrink-0">{last.time}</span>}
                   </div>
                   <p className={`text-xs truncate mt-0.5 ${unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                    {last
-                      ? `${last.role === "psych" ? "You: " : ""}${last.text}`
-                      : <span className="italic text-muted-foreground">No messages yet</span>}
+                    {last ? `${last.role === "psych" ? "You: " : ""}${last.text}` : <span className="italic text-muted-foreground">No messages yet</span>}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
                     {patient.tags.map(t => (
@@ -295,8 +364,73 @@ function MessagesTab() {
         </div>
       </div>
 
+      {/* ── Live DM chat window ── */}
+      {activeStudentName && activeLiveDMs !== null ? (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-border bg-card flex-shrink-0">
+            <button onClick={() => { setActiveStudentName(null); setActivePsychId(null); }}
+              className="sm:hidden p-1.5 rounded-lg hover:bg-muted transition-colors">
+              <ArrowLeft size={16} className="text-muted-foreground" />
+            </button>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-sm font-black text-primary flex-shrink-0">
+              {activeStudentName.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-foreground font-serif text-sm">{activeStudentName}</p>
+                <span className="flex items-center gap-1 text-[10px] text-green-600 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Online
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">Live session · messages are real-time</p>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {activeLiveDMs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
+                <MessageCircle size={28} className="text-muted-foreground" />
+                <p className="text-muted-foreground text-sm">No messages yet. Say hello!</p>
+              </div>
+            ) : activeLiveDMs.map(msg => (
+              <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                className={`flex gap-3 ${msg.fromRole === "psych" ? "flex-row-reverse" : ""}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-auto border ${
+                  msg.fromRole === "user" ? "bg-primary/10 text-primary border-primary/20" : "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                }`}>
+                  {msg.fromRole === "user" ? activeStudentName.slice(0, 2).toUpperCase() : "DR"}
+                </div>
+                <div className={`flex flex-col gap-1 max-w-[72%] ${msg.fromRole === "psych" ? "items-end" : "items-start"}`}>
+                  <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                    msg.fromRole === "psych"
+                      ? "bg-amber-500 text-white rounded-tr-sm shadow-sm"
+                      : "bg-card border border-border text-foreground rounded-tl-sm"
+                  }`}>{msg.text}</div>
+                  <span className="text-[10px] text-muted-foreground px-1">{msg.time}</span>
+                </div>
+              </motion.div>
+            ))}
+            <div ref={endRef} />
+          </div>
+
+          <div className="px-5 py-3 border-t border-border bg-card flex-shrink-0">
+            <div className="flex items-center gap-2 bg-background border border-border rounded-2xl px-3 py-2">
+              <input value={input} onChange={e => setInput(e.target.value)}
+                placeholder={`Reply to ${activeStudentName}...`}
+                className="flex-1 bg-transparent text-foreground placeholder-muted-foreground text-sm focus:outline-none"
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendReply()} />
+              <motion.button onClick={sendReply} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.93 }}
+                className={`p-2 rounded-xl transition-all ${input.trim() ? "bg-amber-500 text-white hover:bg-amber-600" : "text-muted-foreground"}`}>
+                <Send size={15} />
+              </motion.button>
+            </div>
+            <p className="text-center text-[10px] text-muted-foreground mt-1.5">Messages are end-to-end encrypted · HIPAA compliant</p>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Chat window ── */}
-      {activePsychId !== null && activeConvo ? (
+      {activePsychId !== null && !activeStudentName && activeConvo ? (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Chat header */}
           <div className="flex items-center gap-3 px-5 py-3 border-b border-border bg-card flex-shrink-0">

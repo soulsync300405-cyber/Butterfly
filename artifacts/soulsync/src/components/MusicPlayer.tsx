@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ChevronDown, Music2 } from "lucide-react";
 import { MUSIC_TRACKS } from "@/lib/data";
+import { useAmbientAudio, type Playlist } from "@/hooks/useAmbientAudio";
 
 const PLAYLIST_COLORS: Record<string, string> = {
   Focus:      "from-violet-500 to-indigo-600",
@@ -18,22 +19,38 @@ export function MusicPlayer() {
   const [playing, setPlaying] = useState(false);
   const [trackIdx, setTrackIdx] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const [progress, setProgress] = useState(32);
+  const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(70);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audio = useAmbientAudio();
   const track = MUSIC_TRACKS[trackIdx];
   const gradient = PLAYLIST_COLORS[track.playlist] || "from-primary to-teal-500";
   const bars = Array.from({ length: 10 });
 
+  useEffect(() => {
+    if (!playing) return;
+    const id = setInterval(() => setProgress(x => (x + 0.08) % 100), 300);
+    return () => clearInterval(id);
+  }, [playing]);
+
+  useEffect(() => {
+    if (playing) {
+      audio.play(track.playlist as Playlist, volume);
+    }
+  }, [trackIdx]);
+
   const togglePlay = () => {
-    setPlaying(p => {
-      if (!p) {
-        intervalRef.current = setInterval(() => setProgress(x => (x + 0.1) % 100), 300);
-      } else {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-      }
-      return !p;
-    });
+    if (playing) {
+      audio.stop();
+      setPlaying(false);
+    } else {
+      audio.play(track.playlist as Playlist, volume);
+      setPlaying(true);
+    }
+  };
+
+  const changeVolume = (v: number) => {
+    setVolume(v);
+    audio.setVolume(v);
   };
 
   const next = () => setTrackIdx(i => (i + 1) % MUSIC_TRACKS.length);
@@ -188,7 +205,7 @@ export function MusicPlayer() {
               <div className="flex items-center gap-2">
                 <Volume2 size={12} className="text-muted-foreground flex-shrink-0" />
                 <input type="range" min={0} max={100} value={volume}
-                  onChange={e => setVolume(+e.target.value)}
+                  onChange={e => changeVolume(+e.target.value)}
                   className="flex-1 h-1 accent-primary" />
                 <span className="text-[10px] text-muted-foreground w-5 text-right">{volume}</span>
               </div>

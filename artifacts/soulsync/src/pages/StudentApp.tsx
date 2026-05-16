@@ -154,52 +154,72 @@ function ChatTab() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
-  const getAshaReply = (text: string) => {
-    const t = text.toLowerCase();
-    if (/neend|sona|jaag|raat|sleep|tired|thak/.test(t))
-      return "Neend nahi aa rahi yaar? Teen cheezein try karo aaj raat — phone 9:30 PM pe band, ek boring book, aur room thoda thanda rakhna. Kaunsa sabse mushkil lagta hai tum ko? 🌙";
-    if (/anxious|anxiety|darr|scared|ghabra|nervous|panic/.test(t))
-      return "Yeh suno — 5-4-3-2-1 karte hain abhi. 5 cheezein batao jo dikh rahi hain tumhe. Seriously, main wait kar rahi hoon. Yeh trick body ko present moment mein laati hai. ✨";
-    if (/sad|udaas|dukhi|cry|rona|depressed|bura feel|hurt/.test(t))
-      return "Arey yaar, ye sunke dil bhaari ho gaya. Ye feelings valid hain — suppress mat karo. Kya kuch specific hua hai ya ek general heaviness hai? Bato, koi rush nahi. 💙";
-    if (/exam|test|padhai|study|marks|fail|result|assignment/.test(t))
-      return "Exam pressure real hai. Ek kaam karo — abhi sirf ek subject aur ek topic. Poora syllabus ek saath nahi hoga. Kaunsa topic confident lagta hai tujhe? Wahan se shuru karte hain. 📚";
-    if (/overwhelmed|bahut zyada|too much|overload|sab kuch/.test(t))
-      return "Ruko. Deep breath. Jab sab kuch ek saath aata hai, sabse pehle list banao — sirf 3 cheezein jo aaj MUST hain. Baaki kal. Batao kya hain vo teen cheezein? 📝";
-    if (/lonely|akela|friends|dost|koi nahi|alone/.test(t))
-      return "Akela feel karna bahut heavy hota hai. Lekin is waqt hum dono hain yahan — ye bhi connection hai. Kab se yeh feel ho raha hai? Koi specific moment tha? 🤍";
-    if (/angry|gussa|frustrated|irritated|khatam|bore/.test(t))
-      return "Gussa feel karna bhi valid hai! Body mein kahan feel ho raha hai — jaw mein tension? Shoulders tight? Ek kaam karo — 3 baar jor se saans lo aur chod do. Fir batao kya trigger hua. 🌬️";
-    if (/focus|dhyan|concentrate|distracted|productivity/.test(t))
-      return "Focus issues? Pomodoro try kiya kabhi? 25 min pure focus, 5 min break. Phone dusre room mein. Aaj sirf 2 rounds karo. Kab try karoge — abhi ya baad mein? 🎯";
-    if (/better|theek|acha|good|happy|khush|improve/.test(t))
-      return "Yeh sunke BAHUT achha laga! 🎉 Seriously, chhoti victories bhi celebrate karni chahiye. Kya hua? Share karo na — I want to celebrate with you!";
-    if (/thank|shukriya|helpful|maza|love you|best/.test(t))
-      return "Arre yaar, tum bhi na! 🌸 Main toh bas yaad dilati hoon jo tum already jaante ho. Tumhare andar strength hai — main sirf mirror hoon. Aur batao, aaj kya plan hai?";
-    if (/hi|hello|heyy|hey|namaste|kaise|how are/.test(t))
-      return "Heyy! 😊 Main theek hoon, tumhare liye ready hoon! Batao — aaj din kaisa chal raha hai? Kuch hua jo dil mein hai?";
-    const pool = [
-      "Interesting point yaar. Aur jab aisa hota hai, tumhara body kaisa react karta hai? Koi tightness feel hoti hai?",
-      "Main sun rahi hoon properly. Thoda aur expand karo — kab se yeh chal raha hai?",
-      "Ye baat soch ke dekho — agar tumhara best friend yahi situation mein hota, tum use kya kehte?",
-      "Hmm, ye sunke lagta hai tum bahut carry kar rahe ho. Kya koi hai jisse in cheezein openly share kar sako?",
-      "Kabhi kabhi naam dena feelings ko help karta hai. Is waqt jo feel ho raha hai — agar ek word mein kehna ho toh?",
-    ];
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
+  const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const [isStreaming, setIsStreaming] = useState(false);
 
-  const send = () => {
-    if (!input.trim()) return;
-    const text = input;
-    const userMsg = { id: Date.now(), role: "user", text, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-    setMessages(p => [...p, userMsg]);
+  const send = async () => {
+    if (!input.trim() || isStreaming) return;
+    const text = input.trim();
     setInput("");
     setTyping(true);
-    setTimeout(() => {
+    setIsStreaming(true);
+
+    const userMsg = { id: Date.now(), role: "user", text, time: getTime() };
+    setMessages(p => [...p, userMsg]);
+
+    const history = messages.slice(-14).map(m => ({
+      role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+      content: m.text,
+    }));
+    history.push({ role: "user", content: text });
+
+    const aiMsgId = Date.now() + 1;
+
+    try {
+      const resp = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history,
+          userName: user?.name,
+          companionName: companion?.name,
+          language: companion?.language,
+        }),
+      });
+
+      if (!resp.ok || !resp.body) throw new Error("No response");
+
       setTyping(false);
-      const r = getAshaReply(text);
-      setMessages(p => [...p, { id: Date.now() + 1, role: "ai", text: r, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), speaking: false }]);
-    }, 1200 + Math.random() * 600);
+      setMessages(p => [...p, { id: aiMsgId, role: "ai", text: "", time: getTime(), speaking: false }]);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.content) {
+              fullText += data.content;
+              setMessages(p => p.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m));
+            }
+          } catch { /* partial JSON, ignore */ }
+        }
+      }
+    } catch {
+      setTyping(false);
+      setMessages(p => [...p, {
+        id: aiMsgId, role: "ai", speaking: false, time: getTime(),
+        text: "Yaar, thoda connection issue ho gaya. Ek baar phir try karo! 🙏",
+      }]);
+    } finally {
+      setIsStreaming(false);
+    }
   };
 
   const sendOverride = () => {
@@ -491,8 +511,7 @@ function QuestsTab() {
   const [activeQuest, setActiveQuest] = useState<typeof QUESTS[0] | null>(null);
   const [questStep, setQuestStep] = useState(0);
   const [questDone, setQuestDone] = useState(false);
-  const totalXP = completedQuests.reduce((acc, id) => acc + (QUESTS.find(q => q.id === id)?.xp || 0), 0);
-  const levelXP = (user?.xp || 0) + totalXP;
+  const levelXP = user?.xp || 0;
 
   const startQuest = (q: typeof QUESTS[0]) => {
     setActiveQuest(q);
@@ -660,54 +679,48 @@ function LearnTab() {
   ];
 
   if (playing) {
+    const ytId = (playing as typeof playing & { youtubeId?: string }).youtubeId;
     return (
       <div className="h-full flex flex-col bg-[#0a0a0c]">
         {/* Video area */}
-        <div className="flex-1 relative bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
-          <div className={`w-full max-w-2xl aspect-video rounded-xl bg-gradient-to-br ${playing.gradient} flex items-center justify-center`}>
-            <div className="text-center text-white space-y-2">
-              <p className="text-xs opacity-60 uppercase tracking-widest">Episode 1</p>
-              <p className="text-2xl font-black font-serif">{playing.ep1}</p>
-              <p className="text-sm opacity-70">{playing.title}</p>
+        <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+          {ytId ? (
+            <iframe
+              key={ytId}
+              src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&modestbranding=1&rel=0&color=white`}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              style={{ border: "none", minHeight: 360 }}
+            />
+          ) : (
+            <div className={`w-full max-w-2xl aspect-video rounded-xl bg-gradient-to-br ${playing.gradient} flex items-center justify-center`}>
+              <div className="text-center text-white space-y-2">
+                <p className="text-xs opacity-60 uppercase tracking-widest">Episode 1</p>
+                <p className="text-2xl font-black font-serif">{playing.ep1}</p>
+              </div>
             </div>
-          </div>
-          {/* AI companion corner */}
+          )}
+          {/* AI companion corner overlay */}
           <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-            className="absolute bottom-4 right-4 flex items-end gap-2">
-            <div className="bg-black/60 rounded-xl px-3 py-2 max-w-[160px] text-right">
-              <p className="text-white text-xs">"This episode is life-changing. Trust the process!"</p>
+            transition={{ delay: 1.5 }}
+            className="absolute bottom-3 right-3 flex items-end gap-2 pointer-events-none">
+            <div className="bg-black/70 backdrop-blur-sm rounded-xl px-3 py-2 max-w-[170px] text-right">
+              <p className="text-white text-xs leading-snug">"{playing.desc.slice(0, 55)}..."</p>
             </div>
-            <AnimeAvatar size={44} style={companion?.appearance as any || "soft-pastel"} gender={companion?.gender || "female"} speaking />
+            <AnimeAvatar size={38} style={companion?.appearance as any || "soft-pastel"} gender={companion?.gender || "female"} speaking />
           </motion.div>
         </div>
-        {/* Controls */}
-        <div className="bg-[#111] px-6 py-4 space-y-3">
-          <div className="flex items-center justify-between text-white/80">
-            <div>
-              <p className="font-bold text-sm">{playing.ep1}</p>
-              <p className="text-xs text-white/40">{playing.title} · Episode 1 of {playing.episodes}</p>
-            </div>
-            <button onClick={() => setPlaying(null)} className="text-white/60 hover:text-white text-xs flex items-center gap-1">
-              <X size={14} /> Exit
-            </button>
+        {/* Controls bar */}
+        <div className="bg-[#111] px-6 py-3 flex items-center justify-between border-t border-white/10">
+          <div>
+            <p className="font-bold text-sm text-white">{playing.ep1}</p>
+            <p className="text-xs text-white/40">{playing.title} · Episode 1 of {playing.episodes}</p>
           </div>
-          <div className="space-y-1">
-            <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden cursor-pointer"
-              onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setProgress(((e.clientX - r.left) / r.width) * 100); }}>
-              <div className="h-full bg-white rounded-full transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="flex justify-between text-[10px] text-white/40">
-              <span>{Math.floor(progress * 0.24)}:{String(Math.floor((progress * 0.24 % 1) * 60)).padStart(2, "0")}</span>
-              <span>24:00</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-center gap-6">
-            <button className="text-white/60 hover:text-white transition-colors"><SkipBackIcon /></button>
-            <button className="w-12 h-12 rounded-full bg-white flex items-center justify-center hover:opacity-90 transition-opacity">
-              <Play size={18} className="text-black ml-0.5" />
-            </button>
-            <button className="text-white/60 hover:text-white transition-colors"><SkipFwdIcon /></button>
-          </div>
+          <button onClick={() => setPlaying(null)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors">
+            <X size={13} /> Exit
+          </button>
         </div>
       </div>
     );
@@ -1079,9 +1092,29 @@ function PsychTab({ socket }: { socket: Socket | null }) {
 
   const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-  const sendMessage = (pid: number, text: string) => {
-    addPsychMessage(pid, { id: Date.now(), role: "student", text, time: getTime() });
+  const sendMessage = (pid: number, text: string, psychName: string) => {
+    const msg = { id: Date.now(), role: "student" as const, text, time: getTime() };
+    addPsychMessage(pid, msg);
+    socket?.emit("dm-send", {
+      toName: psychName,
+      text,
+      fromName: user?.name || "Anonymous",
+      fromRole: "user",
+    });
   };
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (dm: { id: number; fromName: string; fromRole: string; text: string; time: string }) => {
+      if (dm.fromRole !== "psych") return;
+      const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
+      if (psych) {
+        addPsychMessage(psych.id, { id: dm.id, role: "psych", text: dm.text, time: dm.time });
+      }
+    };
+    socket.on("dm-receive", handler);
+    return () => { socket.off("dm-receive", handler); };
+  }, [socket, addPsychMessage]);
 
   const handleBook = (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => {
     if (!bookPsych) return;
@@ -1204,7 +1237,7 @@ function PsychTab({ socket }: { socket: Socket | null }) {
           <PsychMessagingModal
             psych={msgPsych}
             messages={getMessages(msgPsych.id)}
-            onSend={(text) => sendMessage(msgPsych.id, text)}
+            onSend={(text) => sendMessage(msgPsych.id, text, msgPsych.name)}
             onClose={() => setMsgPsych(null)}
           />
         )}
