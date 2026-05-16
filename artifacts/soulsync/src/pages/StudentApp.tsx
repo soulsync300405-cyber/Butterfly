@@ -149,17 +149,52 @@ function ChatTab() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
+  const getAshaReply = (text: string) => {
+    const t = text.toLowerCase();
+    if (/neend|sona|jaag|raat|sleep|tired|thak/.test(t))
+      return "Neend nahi aa rahi yaar? Teen cheezein try karo aaj raat — phone 9:30 PM pe band, ek boring book, aur room thoda thanda rakhna. Kaunsa sabse mushkil lagta hai tum ko? 🌙";
+    if (/anxious|anxiety|darr|scared|ghabra|nervous|panic/.test(t))
+      return "Yeh suno — 5-4-3-2-1 karte hain abhi. 5 cheezein batao jo dikh rahi hain tumhe. Seriously, main wait kar rahi hoon. Yeh trick body ko present moment mein laati hai. ✨";
+    if (/sad|udaas|dukhi|cry|rona|depressed|bura feel|hurt/.test(t))
+      return "Arey yaar, ye sunke dil bhaari ho gaya. Ye feelings valid hain — suppress mat karo. Kya kuch specific hua hai ya ek general heaviness hai? Bato, koi rush nahi. 💙";
+    if (/exam|test|padhai|study|marks|fail|result|assignment/.test(t))
+      return "Exam pressure real hai. Ek kaam karo — abhi sirf ek subject aur ek topic. Poora syllabus ek saath nahi hoga. Kaunsa topic confident lagta hai tujhe? Wahan se shuru karte hain. 📚";
+    if (/overwhelmed|bahut zyada|too much|overload|sab kuch/.test(t))
+      return "Ruko. Deep breath. Jab sab kuch ek saath aata hai, sabse pehle list banao — sirf 3 cheezein jo aaj MUST hain. Baaki kal. Batao kya hain vo teen cheezein? 📝";
+    if (/lonely|akela|friends|dost|koi nahi|alone/.test(t))
+      return "Akela feel karna bahut heavy hota hai. Lekin is waqt hum dono hain yahan — ye bhi connection hai. Kab se yeh feel ho raha hai? Koi specific moment tha? 🤍";
+    if (/angry|gussa|frustrated|irritated|khatam|bore/.test(t))
+      return "Gussa feel karna bhi valid hai! Body mein kahan feel ho raha hai — jaw mein tension? Shoulders tight? Ek kaam karo — 3 baar jor se saans lo aur chod do. Fir batao kya trigger hua. 🌬️";
+    if (/focus|dhyan|concentrate|distracted|productivity/.test(t))
+      return "Focus issues? Pomodoro try kiya kabhi? 25 min pure focus, 5 min break. Phone dusre room mein. Aaj sirf 2 rounds karo. Kab try karoge — abhi ya baad mein? 🎯";
+    if (/better|theek|acha|good|happy|khush|improve/.test(t))
+      return "Yeh sunke BAHUT achha laga! 🎉 Seriously, chhoti victories bhi celebrate karni chahiye. Kya hua? Share karo na — I want to celebrate with you!";
+    if (/thank|shukriya|helpful|maza|love you|best/.test(t))
+      return "Arre yaar, tum bhi na! 🌸 Main toh bas yaad dilati hoon jo tum already jaante ho. Tumhare andar strength hai — main sirf mirror hoon. Aur batao, aaj kya plan hai?";
+    if (/hi|hello|heyy|hey|namaste|kaise|how are/.test(t))
+      return "Heyy! 😊 Main theek hoon, tumhare liye ready hoon! Batao — aaj din kaisa chal raha hai? Kuch hua jo dil mein hai?";
+    const pool = [
+      "Interesting point yaar. Aur jab aisa hota hai, tumhara body kaisa react karta hai? Koi tightness feel hoti hai?",
+      "Main sun rahi hoon properly. Thoda aur expand karo — kab se yeh chal raha hai?",
+      "Ye baat soch ke dekho — agar tumhara best friend yahi situation mein hota, tum use kya kehte?",
+      "Hmm, ye sunke lagta hai tum bahut carry kar rahe ho. Kya koi hai jisse in cheezein openly share kar sako?",
+      "Kabhi kabhi naam dena feelings ko help karta hai. Is waqt jo feel ho raha hai — agar ek word mein kehna ho toh?",
+    ];
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
+
   const send = () => {
     if (!input.trim()) return;
-    const userMsg = { id: Date.now(), role: "user", text: input, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+    const text = input;
+    const userMsg = { id: Date.now(), role: "user", text, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
     setMessages(p => [...p, userMsg]);
     setInput("");
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
-      const r = ASHA_RESPONSES[Math.floor(Math.random() * ASHA_RESPONSES.length)];
+      const r = getAshaReply(text);
       setMessages(p => [...p, { id: Date.now() + 1, role: "ai", text: r, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), speaking: false }]);
-    }, 1400 + Math.random() * 800);
+    }, 1200 + Math.random() * 600);
   };
 
   const sendOverride = () => {

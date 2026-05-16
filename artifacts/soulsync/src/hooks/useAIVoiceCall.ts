@@ -2,206 +2,231 @@ import { useRef, useState, useCallback, useEffect } from "react";
 
 export type AICallState = "idle" | "listening" | "thinking" | "speaking";
 
-const ASHA_VOICE_REPLIES: { keywords: string[]; replies: string[] }[] = [
+const VOICE_REPLIES: { test: RegExp; replies: string[] }[] = [
   {
-    keywords: ["neend", "sleep", "sona", "raat", "jaag"],
+    test: /neend|sona|jaag|raat|sleep|tired|thak/,
     replies: [
-      "Neend nahi aa rahi? Main samajh sakti hoon yaar. Chalo ek kaam karte hain — phone rakh do, aankhein band karo, aur meri awaaz suno. Breathe in slowly... 1, 2, 3, 4.",
-      "Sleep problems bahut common hain, especially jab stress zyada hota hai. Kya aaj raat koi specific cheez hai jo mind mein chal rahi hai?",
+      "Neend nahi aa rahi? Main samajh sakti hoon. Aaj raat ek cheez try karo — phone 9:30 pe band, ek boring book, aur room thoda thanda. Kaunsa sabse possible lagta hai?",
+      "Teen din se yeh sun rahi hoon tum se. Body ko real rest chahiye. Kya koi specific cheez hai jo mind mein chal rahi hai sone se pehle?",
     ],
   },
   {
-    keywords: ["anxious", "anxiety", "nervous", "ghabra", "darr", "scared"],
+    test: /anxious|anxiety|darr|scared|ghabra|nervous|panic/,
     replies: [
-      "Anxiety feel ho raha hai? Body mein kaahan feel ho raha hai — chest mein, stomach mein? Let's ground ourselves. 5 cheezein batao jo tum abhi dekh sakte ho.",
-      "Ye feelings real hain aur valid hain. Main yahan hoon. Ek deep breath lo mere saath — breathe in 4 counts, hold 4, out 4. Try karte hain?",
+      "Chalo abhi ek kaam karte hain. 5 cheezein batao jo tumhe abhi dikh rahi hain — seedha batao, main sun rahi hoon.",
+      "Anxiety feel ho raha hai? Body mein kahan hai ye — chest mein, stomach mein? Breathe in 4 counts mere saath. Ready?",
     ],
   },
   {
-    keywords: ["exam", "test", "study", "padhai", "marks", "fail"],
+    test: /sad|udaas|dukhi|cry|rona|depressed|bura|hurt/,
     replies: [
-      "Exams ka pressure bahut real hota hai. Lekin ek cheez yaad raho — tum sirf ek exam nahi ho. Tum ek poora insaan ho. Abhi sirf ek step — kaunsa subject sabse hard lag raha hai?",
-      "Exam stress ke time mein body ko extra care chahiye. Paani piya? Thoda khaya? Chhoti chhoti cheezein count karti hain.",
+      "Ye sunke dil bhaari ho gaya. Ye feelings suppress mat karo — valid hain. Kya specific kuch hua hai ya general heaviness hai?",
+      "Kabhi kabhi sirf kisi ke saath hona hi kaafi hota hai. Main yahan hoon, poori tarah. Batao kya chal raha hai.",
     ],
   },
   {
-    keywords: ["sad", "udaas", "dukhi", "cry", "rona", "depressed", "bura"],
+    test: /exam|test|padhai|study|marks|fail|result/,
     replies: [
-      "Udaas feel ho raha hai. Ye bilkul theek hai — emotions ko feel karna important hai. Kya hua? Batana chahoge?",
-      "Kabhi kabhi sirf kisi ke saath baat karna hi kaafi hota hai. Main sun rahi hoon, poori tarah. Share karo.",
+      "Exam pressure real hai. Sirf ek subject, ek topic — abhi. Kaunsa confident lagta hai? Wahan se shuru karte hain.",
+      "Poora syllabus ek saath nahi hoga. Aaj ke liye sirf 2 ghante focused karo. Kaunsa topic pehle?",
     ],
   },
   {
-    keywords: ["overwhelmed", "bohot", "bahut", "zyada", "overload", "thak"],
+    test: /overwhelmed|too much|overload|sab kuch|bahut zyada/,
     replies: [
-      "Overwhelmed feel ho raha hai — bilkul samajh sakti hoon. Jab sab kuch ek saath aata hai toh bahut heavy lagta hai. Aaj ke liye sirf ek kaam choose karo. Baki kal ke liye.",
-      "Thakaan real hai. Body aur mind dono ko rest chahiye. Kya aaj kuch ek cheez thi jo acchi lagi, chahe kitni bhi chhoti ho?",
+      "Ruko. Deep breath pehle. Sirf 3 cheezein batao jo aaj MUST hain — baaki kal ke liye. Kya hain ve teen?",
+      "Jab sab kuch ek saath aata hai, list help karti hai. Abhi ek notepad lo aur sab kuch likh do — mind clear hoga.",
     ],
   },
   {
-    keywords: ["lonely", "akela", "friends", "dost", "relationship", "pyar", "love"],
+    test: /lonely|akela|dost|friends|koi nahi|alone/,
     replies: [
-      "Akela feel karna bahut difficult hota hai. Lekin yaad raho — tum yahan ho, aur main yahan hoon. Ye connection real hai.",
-      "Relationships complicated hoti hain. Kya koi specific situation hai jo bother kar rahi hai? Bata sakte ho openly.",
+      "Akela feel karna bahut heavy hota hai. Is waqt hum dono hain yahan — ye bhi real connection hai. Kab se feel ho raha hai yeh?",
+      "Relationships complicated hoti hain. Koi specific person hai jiske baare mein soch rahe ho, ya general loneliness hai?",
     ],
   },
   {
-    keywords: ["better", "acha", "theek", "good", "happy", "khush", "great"],
+    test: /better|theek|acha|good|happy|khush|improve/,
     replies: [
-      "Yeh sunke bahut accha laga! Kya hua? Share karo — good news celebrate karni chahiye!",
-      "Bahut achha! Ye progress hai. Chhoti victories bhi matter karti hain. Tumne kya kiya alag is baar?",
+      "Yeh sunke bahut achha laga! Seriously — kya hua? Share karo, main celebrate karna chahti hoon tumhare saath!",
+      "Chhoti victories bhi matter karti hain. Tumne kya kiya alag is baar?",
     ],
   },
   {
-    keywords: ["hello", "hi", "heyy", "kaise", "how", "namaste", "hey"],
+    test: /focus|dhyan|concentrate|distracted|productivity/,
     replies: [
-      "Heyy! Aaj kaisa feel ho raha hai? Main yahan hoon poori tarah tumhare liye.",
-      "Hi yaar! Batao — aaj din kaisa chal raha hai? Kuch hua jo share karna chahte ho?",
+      "Focus ke liye Pomodoro try karo — 25 min full focus, 5 min break. Phone dusre room mein. Aaj 2 rounds karo?",
+      "Distraction real struggle hai. Kya specific cheez distract kar rahi hai — phone, noise, ya thoughts?",
+    ],
+  },
+  {
+    test: /hi|hello|heyy|hey|namaste|kaise|how are/,
+    replies: [
+      "Heyy! Main theek hoon, tumhare liye ready! Batao — aaj din kaisa chal raha hai?",
+      "Haan yaar, main yahan hoon! Kuch specific hua jo share karna hai, ya bas baat karni hai?",
     ],
   },
 ];
 
-const DEFAULT_REPLIES = [
-  "Haan, main sun rahi hoon. Thoda aur batao — kya specifically bother kar raha hai tumhe?",
-  "Interesting. Aur jab aisa hota hai, body mein kya feel hota hai? Koi tightness chest mein ya stomach mein?",
-  "Main samajh sakti hoon. Ye feelings bahut real hain. Tum akele nahi ho is mein.",
-  "Ye baat soch ke dekho — agar koi dost yahi situation mein hota toh tum usse kya kehte?",
-  "Hmm, ye sunke lagta hai ki tum bahut strong ho, even if it doesn't feel that way right now.",
-  "Acha, aur kab se yeh feel ho raha hai? Koi specific moment tha jab ye shuru hua?",
-  "Main yahan hoon. Baat karte rehte hain. Koi rush nahi hai.",
+const FALLBACK = [
+  "Interesting. Aur jab aisa hota hai, body mein kya feel hota hai?",
+  "Main sun rahi hoon properly. Thoda aur expand karo — kab se yeh chal raha hai?",
+  "Ye baat soch ke dekho — agar tumhara best friend yahi situation mein hota, tum use kya kehte?",
+  "Hmm. Kya koi specific moment tha jab ye shuru hua?",
+  "Is waqt jo feel ho raha hai — agar ek word mein kehna ho toh kya hoga?",
 ];
 
-function pickReply(transcript: string): string {
+function pickReply(transcript: string) {
   const lower = transcript.toLowerCase();
-  for (const entry of ASHA_VOICE_REPLIES) {
-    if (entry.keywords.some(kw => lower.includes(kw))) {
+  for (const entry of VOICE_REPLIES) {
+    if (entry.test.test(lower)) {
       return entry.replies[Math.floor(Math.random() * entry.replies.length)];
     }
   }
-  return DEFAULT_REPLIES[Math.floor(Math.random() * DEFAULT_REPLIES.length)];
+  return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
 }
 
-type SpeechRecognitionInstance = {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((e: { results: { [i: number]: { [i: number]: { transcript: string } } } }) => void) | null;
-  onerror: ((e: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-};
+const hasSpeech = typeof window !== "undefined" && "speechSynthesis" in window;
+const hasSR = typeof window !== "undefined" &&
+  ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-export function useAIVoiceCall(companionName: string, companionVoice?: string) {
+export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
   const [callState, setCallState] = useState<AICallState>("idle");
   const [transcript, setTranscript] = useState("");
   const [ashaText, setAshaText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const synthRef = useRef(window.speechSynthesis);
+
+  // Use a ref so recognition.onend always reads the LATEST transcript (avoids stale closure)
+  const transcriptRef = useRef("");
   const activeRef = useRef(false);
+  const recognitionRef = useRef<any>(null);
+
+  const updateTranscript = (t: string) => {
+    transcriptRef.current = t;
+    setTranscript(t);
+  };
 
   const speak = useCallback((text: string, onDone?: () => void) => {
-    synthRef.current.cancel();
+    setCallState("speaking");
+    setAshaText(text);
+
+    if (!hasSpeech) {
+      // No speech synthesis — simulate timing and move on
+      const delay = Math.min(text.length * 60, 5000);
+      setTimeout(() => {
+        setCallState("listening");
+        onDone?.();
+      }, delay);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(text);
     utt.lang = "hi-IN";
-    utt.rate = 0.95;
+    utt.rate = 0.92;
     utt.pitch = 1.1;
 
-    if (companionVoice) {
-      const voices = synthRef.current.getVoices();
-      const match = voices.find(v => v.name.toLowerCase().includes(companionVoice.toLowerCase()));
-      if (match) utt.voice = match;
-    }
+    // Pick a female voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const female = voices.find(v =>
+      v.lang.startsWith("hi") || v.name.toLowerCase().includes("female") || v.name.toLowerCase().includes("zira")
+    );
+    if (female) utt.voice = female;
 
     utt.onend = () => {
       setCallState("listening");
       onDone?.();
     };
-    setCallState("speaking");
-    setAshaText(text);
-    synthRef.current.speak(utt);
-  }, [companionVoice]);
+    utt.onerror = () => {
+      setCallState("listening");
+      onDone?.();
+    };
+
+    window.speechSynthesis.speak(utt);
+  }, []);
 
   const startListening = useCallback(() => {
     if (!activeRef.current) return;
-    const SR = (window as unknown as Record<string, unknown>)["SpeechRecognition"] as (new () => SpeechRecognitionInstance) | undefined
-      || (window as unknown as Record<string, unknown>)["webkitSpeechRecognition"] as (new () => SpeechRecognitionInstance) | undefined;
 
-    if (!SR) {
-      setError("Speech recognition not supported in this browser.");
+    if (!hasSR) {
+      // No speech recognition — stay in "listening" state visually, do nothing
+      setCallState("listening");
       return;
     }
 
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SR();
     recognitionRef.current = recognition;
+
     recognition.lang = "hi-IN";
     recognition.interimResults = true;
     recognition.continuous = false;
+    recognition.maxAlternatives = 1;
 
-    recognition.onresult = (e) => {
-      const t = e.results[0][0].transcript;
-      setTranscript(t);
+    recognition.onresult = (e: any) => {
+      const t = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
+        .join("");
+      updateTranscript(t);
     };
 
-    recognition.onerror = (e) => {
+    recognition.onerror = (e: any) => {
       if (e.error !== "no-speech" && e.error !== "aborted") {
-        setError(`Mic error: ${e.error}`);
+        setError(`Mic: ${e.error}`);
       }
     };
 
     recognition.onend = () => {
       if (!activeRef.current) return;
-      const finalTranscript = transcript;
+      const finalTranscript = transcriptRef.current; // ← always latest via ref
+      updateTranscript("");
+
       if (finalTranscript.trim().length > 2) {
         setCallState("thinking");
         setTimeout(() => {
           if (!activeRef.current) return;
           const reply = pickReply(finalTranscript);
-          setTranscript("");
           speak(reply, () => {
-            if (activeRef.current) {
-              setTimeout(startListening, 600);
-            }
+            if (activeRef.current) setTimeout(startListening, 700);
           });
-        }, 800 + Math.random() * 600);
+        }, 700 + Math.random() * 500);
       } else {
-        setTimeout(startListening, 400);
+        // Nothing heard — keep listening
+        setTimeout(startListening, 500);
       }
     };
 
     setCallState("listening");
     try { recognition.start(); } catch (_) {}
-  }, [transcript, speak]);
+  }, [speak]);
 
   const startCall = useCallback(() => {
     activeRef.current = true;
-    setCallState("speaking");
     setError(null);
+    updateTranscript("");
+
     const greeting = `Heyy! ${companionName} bol rahi hoon. Aaj kaisa feel ho raha hai? Main poori tarah yahan hoon tumhare liye.`;
-    setAshaText(greeting);
     speak(greeting, () => {
-      if (activeRef.current) setTimeout(startListening, 500);
+      if (activeRef.current) setTimeout(startListening, 600);
     });
   }, [companionName, speak, startListening]);
 
   const stopCall = useCallback(() => {
     activeRef.current = false;
-    recognitionRef.current?.abort();
-    synthRef.current.cancel();
+    try { recognitionRef.current?.abort(); } catch (_) {}
+    if (hasSpeech) try { window.speechSynthesis.cancel(); } catch (_) {}
     setCallState("idle");
-    setTranscript("");
+    updateTranscript("");
     setAshaText("");
   }, []);
 
   useEffect(() => {
     return () => {
       activeRef.current = false;
-      recognitionRef.current?.abort();
-      synthRef.current.cancel();
+      try { recognitionRef.current?.abort(); } catch (_) {}
+      if (hasSpeech) try { window.speechSynthesis.cancel(); } catch (_) {}
     };
   }, []);
 
-  return { callState, transcript, ashaText, error, startCall, stopCall };
+  return { callState, transcript, ashaText, error, startCall, stopCall, hasSpeech, hasSR };
 }
