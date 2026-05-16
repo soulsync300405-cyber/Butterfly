@@ -1,0 +1,33 @@
+Act as a Lead Systems Architect and Full-Stack Engineer specializing in WebRTC, WebSockets, and real-time Multimodal AI applications. I am upgrading "SoulSync"—a mental wellness platform with a premium, dark-mode Netflix-style UI. 
+
+I need you to build a comprehensive, modular real-time communication system that supports two core features:
+1. "Call Asha" (AI Voice/Video Call): Real-time, low-latency voice conversation with the AI, where the AI can simultaneously stream the user's webcam feed to "see" their surroundings and reference them contextually in conversation.
+2. "Connect with a Peer/Psychologist": A seamless transition to a peer-to-peer WebRTC video and audio call with a real human psychologist.
+
+Please implement the backend structure using Node.js (Express/Socket.io) or Python (FastAPI) and the frontend wrapper logic. Deliver the architecture across these 4 distinct blocks:
+
+1. System Architecture & Setup
+- Outline a project folder structure that cleanly separates the AI live streaming engine, the WebRTC human signaling server, and database state management.
+- Detail the dependencies required (e.g., @google/genai SDK for Gemini Live API, socket.io for signaling, and canvas/Web-API utilities for frame processing).
+
+2. AI Live Voice & Vision Stream Backend (The Gemini Live API Integration)
+- Write the backend code using the Gemini Live API protocol over a persistent WebSocket connection (WSS).
+- Configure the setup to handle full-duplex streaming:
+  a) Accept continuous raw 16-bit PCM (16kHz) audio bytes from the client and stream them to Gemini.
+  b) Accept incoming JPEG frames (capped at 1 frame per second) captured from the user's webcam, allowing the AI to process visual surroundings.
+  c) Stream back the raw 24kHz audio chunks emitted by Gemini to the client for immediate, low-latency playback with native barge-in (interruption) support.
+- Include a specific System Instruction layer ensuring the AI behaves as an empathetic, visually-aware companion ("Asha") who comments naturally on the user's environment if relevant to their mood.
+
+3. Human-to-Human WebRTC Signaling Server (Psychologist Live Call)
+- Write an Express and Socket.IO signaling server to coordinate human-to-human WebRTC connections.
+- Implement socket events for: `join-room`, `offer`, `answer`, `ice-candidate`, and `end-call`.
+- Create an allocation logic that handles user-to-psychologist room matching securely.
+
+4. Netflix-UI Frontend Media Capture & Streaming Layer
+- Provide the frontend JavaScript/React logic to:
+  a) Access user camera and microphone via navigator.mediaDevices.getUserMedia.
+  b) Extract 1-FPS image frames from a hidden HTML5 canvas and stream them over the socket.
+  c) Feed incoming audio chunks into the Browser's AudioContext or Web Audio API for seamless streaming playback.
+  d) Style components to look like a high-end streaming overlay (e.g., active pulsing indicators, blurred glass dark backgrounds, camera stream container).
+
+Ensure the code handles errors gracefully (e.g., socket disconnections, audio buffering latency, camera access denials) and is optimized for deployment in a Replit container environment.
