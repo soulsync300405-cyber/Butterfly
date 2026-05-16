@@ -5,12 +5,16 @@ import {
   Send, Mic, MicOff, Eye, Phone, Video, ChevronRight, Flame, Star, X,
   Play, Pause, CheckCircle, Clock, Trophy, TrendingUp, Bell, Lock, Volume2,
   LogOut, Sliders, RefreshCw, ChevronDown, ChevronUp, Shield, AlertTriangle,
-  Calendar, ArrowRight, MoreVertical, Sparkles
+  Calendar, ArrowRight, MoreVertical, Sparkles, Loader2, PhoneOff
 } from "lucide-react";
 import { AnimeAvatar } from "@/components/AnimeAvatar";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import { CallUI } from "@/components/CallUI";
+import { LiveCallModal } from "@/components/LiveCallModal";
 import { useStore } from "@/lib/store";
+import { useRegisterSocket } from "@/hooks/useSocket";
+import { useStudentCall } from "@/hooks/useStudentCall";
+import type { Socket } from "socket.io-client";
 import {
   QUESTS, COURSES, PSYCHOLOGISTS, MOOD_DATA, ASHA_RESPONSES, SCHEDULE_SLOTS
 } from "@/lib/data";
@@ -35,6 +39,7 @@ const NAV: NavItem[] = [
 export function StudentApp({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState("chat");
   const { user, companion, completedQuests, settings } = useStore();
+  const socket = useRegisterSocket("user", user?.name || "Anonymous");
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -101,7 +106,7 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
             {tab === "chat" && <ChatTab />}
             {tab === "quests" && <QuestsTab />}
             {tab === "learn" && <LearnTab />}
-            {tab === "psych" && <PsychTab />}
+            {tab === "psych" && <PsychTab socket={socket} />}
             {tab === "analytics" && <AnalyticsTab />}
             {tab === "settings" && <SettingsTab />}
           </motion.div>
@@ -1065,12 +1070,12 @@ function BookingModal({
 }
 
 // ─── PSYCH TAB ───────────────────────────────────────────────────────────────
-function PsychTab() {
-  const [showCall, setShowCall] = useState(false);
-  const [callPsych, setCallPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
+function PsychTab({ socket }: { socket: Socket | null }) {
   const [msgPsych, setMsgPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
   const [bookPsych, setBookPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
   const { user, psychMessages, addPsychMessage, psychBookings, setPsychBooking, removePsychBooking } = useStore();
+
+  const call = useStudentCall(socket, user?.name || "Anonymous");
 
   const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -1160,10 +1165,21 @@ function PsychTab() {
               )}
 
               <div className="flex gap-2">
-                <button onClick={() => { setCallPsych(p); setShowCall(true); }}
-                  disabled={!p.available}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${p.available ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
-                  <Phone size={13} /> Call Now
+                <button
+                  onClick={() => p.available && call.status === "idle" && call.dial(p.name)}
+                  disabled={!p.available || call.status !== "idle"}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                    p.available && call.status === "idle"
+                      ? "bg-primary text-primary-foreground hover:opacity-90"
+                      : "bg-muted text-muted-foreground cursor-not-allowed"
+                  }`}>
+                  {call.status === "ringing" ? (
+                    <><Loader2 size={13} className="animate-spin" /> Ringing...</>
+                  ) : call.status === "connecting" || call.status === "active" ? (
+                    <><Phone size={13} /> In Call</>
+                  ) : (
+                    <><Phone size={13} /> Call Now</>
+                  )}
                 </button>
                 <button onClick={() => setBookPsych(p)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-all ${booking ? "border-primary/30 bg-primary/5 text-primary" : "border-border text-foreground hover:bg-muted/50"}`}>
@@ -1205,10 +1221,46 @@ function PsychTab() {
         )}
       </AnimatePresence>
 
-      {/* Call UI */}
+      {/* Status toasts */}
       <AnimatePresence>
-        {showCall && callPsych && (
-          <CallUI type="psychologist" psychName={callPsych.name.replace("Dr. ", "")} onEnd={() => { setShowCall(false); setCallPsych(null); }} />
+        {call.status === "ringing" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl border border-primary/30 bg-card">
+            <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }}
+              className="w-2.5 h-2.5 rounded-full bg-primary" />
+            <span className="text-sm font-semibold text-foreground">Calling {call.peerName || "psychologist"}...</span>
+            <button onClick={call.endCall} className="ml-2 p-1.5 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+              <PhoneOff size={14} />
+            </button>
+          </motion.div>
+        )}
+        {call.status === "declined" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-xl bg-destructive/10 border border-destructive/25 text-destructive text-sm font-semibold">
+            Call declined — psychologist is unavailable right now
+          </motion.div>
+        )}
+        {call.status === "no-psych" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold">
+            No psychologist is available right now — try again shortly
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Live call modal (real WebRTC) */}
+      <AnimatePresence>
+        {(call.status === "connecting" || call.status === "active") && (
+          <LiveCallModal
+            localStream={call.localStream}
+            remoteStream={call.remoteStream}
+            peerName={call.peerName}
+            role="user"
+            messages={call.messages}
+            onSendMessage={call.sendMessage}
+            onEnd={call.endCall}
+            status={call.status}
+          />
         )}
       </AnimatePresence>
     </div>

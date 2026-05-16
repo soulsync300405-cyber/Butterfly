@@ -4,12 +4,15 @@ import {
   Users, AlertTriangle, Activity, TrendingUp, BarChart2, FileText,
   Bell, Settings, LogOut, Phone, MessageCircle, Zap, ChevronRight,
   X, CheckCircle, RefreshCw, Shield, Clock, Download, Filter,
-  Eye, Star, BellOff, Send, ArrowLeft, Inbox
+  Eye, Star, BellOff, Send, ArrowLeft, Inbox, PhoneOff, PhoneIncoming
 } from "lucide-react";
 import { PATIENTS, NOTIFICATIONS, REPORTS } from "@/lib/data";
 import { CallUI } from "@/components/CallUI";
+import { LiveCallModal } from "@/components/LiveCallModal";
 import { useStore } from "@/lib/store";
 import type { SharedMessage } from "@/lib/store";
+import { useRegisterSocket } from "@/hooks/useSocket";
+import { usePsychCall } from "@/hooks/usePsychCall";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
@@ -22,6 +25,9 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
   const [selectedPatient, setSelectedPatient] = useState<typeof PATIENTS[0] | null>(null);
   const [notifications, setNotifications] = useState(NOTIFICATIONS);
   const { psychMessages, psychLastRead } = useStore();
+
+  const socket = useRegisterSocket("psychologist", "Dr. Priya Iyer");
+  const psychCall = usePsychCall(socket);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -96,6 +102,71 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* ── Incoming call overlay (floats above everything) ── */}
+      <AnimatePresence>
+        {psychCall.status === "incoming" && psychCall.incoming && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.88, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            className="fixed bottom-8 right-8 z-50 w-80 rounded-3xl shadow-2xl overflow-hidden border border-white/10"
+            style={{ background: "rgba(8,14,10,0.95)", backdropFilter: "blur(24px)" }}>
+
+            {/* Top gradient strip */}
+            <div className="h-1 bg-gradient-to-r from-primary via-emerald-400 to-teal-400" />
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 1.2, repeat: Infinity }}
+                  className="w-12 h-12 rounded-2xl bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
+                  <PhoneIncoming size={20} className="text-primary" />
+                </motion.div>
+                <div>
+                  <p className="text-white font-bold text-sm">Incoming Patient Call</p>
+                  <p className="text-white/50 text-xs mt-0.5">{psychCall.incoming.userName} is calling</p>
+                </div>
+                <motion.div className="ml-auto flex gap-1">
+                  {[0, 1, 2].map(i => (
+                    <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-primary"
+                      animate={{ opacity: [1, 0.2, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: i * 0.25 }} />
+                  ))}
+                </motion.div>
+              </div>
+
+              <div className="flex gap-2.5">
+                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
+                  onClick={() => psychCall.decline()}
+                  className="flex-1 py-3 rounded-2xl border border-white/10 text-white/60 text-sm font-semibold hover:border-destructive/40 hover:text-destructive transition-all">
+                  <PhoneOff size={14} className="inline mr-1.5" /> Decline
+                </motion.button>
+                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
+                  onClick={() => psychCall.accept()}
+                  className="flex-1 py-3 rounded-2xl text-white text-sm font-bold"
+                  style={{ background: "linear-gradient(135deg, #3A7A52 0%, #2d6142 100%)" }}>
+                  <Phone size={14} className="inline mr-1.5" /> Accept
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Live call modal ── */}
+      <AnimatePresence>
+        {(psychCall.status === "connecting" || psychCall.status === "active") && (
+          <LiveCallModal
+            localStream={psychCall.localStream}
+            remoteStream={psychCall.remoteStream}
+            peerName={psychCall.peerName}
+            role="psych"
+            messages={psychCall.messages}
+            onSendMessage={(text) => psychCall.sendMessage(text, "Dr. Priya Iyer")}
+            onEnd={psychCall.endCall}
+            status={psychCall.status}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

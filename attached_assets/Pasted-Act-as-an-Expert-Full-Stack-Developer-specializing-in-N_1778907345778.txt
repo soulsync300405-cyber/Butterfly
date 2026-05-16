@@ -1,0 +1,22 @@
+Act as an Expert Full-Stack Developer specializing in Node.js, Socket.io, and WebRTC. I am building the working prototype for "SoulSync." I need to fix my chatbot replies, implement a real-time synchronized chat history, and create a fully functional User-to-Psychologist live calling system that I can test across two different devices simultaneously.
+
+Please write the complete, clean, and modular code for the following setup:
+
+1. Dual-Role Authentication & Session Routing
+- Create a simple mock login or toggle on the frontend to define the device role: Device A = 'User', Device B = 'Psychologist'.
+- On the backend, maintain an active memory object (or low-overhead database state) tracking online users and online psychologists. When the Psychologist logs in, they should automatically join a room called `psychologist_pool`.
+
+2. The "Call Specialist" WebRTC & Socket.io Pipeline
+- Implement a functional "Call Psychologist" button on the User interface. Clicking this must emit a `dial-psychologist` event to the backend.
+- The backend must pick an available psychologist from the pool and emit an incoming call alert (`incoming-call-from-user`) to the Psychologist's device with a "Accept" and "Decline" UI.
+- Upon clicking "Accept", establish a direct WebRTC peer-to-peer connection using Socket.io as the signaling server (`offer`, `answer`, `ice-candidate` exchange) to stream live audio/video between the two devices.
+
+3. Real-Time Shared Chat Sync (Socket.io + Database Relay)
+- Fix the standard chatbot system: Ensure that text chat with the AI works seamlessly, but when a human psychologist is connected, the chat input switches over to the human.
+- Implement a shared, real-time message relay. When the User types a message, it must instantly emit to the server, save to the chat history array, and broadcast via `io.to()` to the Psychologist’s dashboard in real-time (and vice versa). 
+- Ensure the Psychologist's UI instantly appends incoming user messages to their screen without requiring a page refresh.
+
+4. Graceful Call Termination & State Reset
+- Implement an "End Call" button on both sides. Triggering this must tear down the WebRTC stream, close the connection, notify the other peer via socket (`call-ended`), and return both devices back to their respective standard dashboard states smoothly.
+
+Provide the complete Node.js/Express/Socket.io backend file (`server.js`) and the frontend React/JavaScript logic for handling the media streams, canvas/video DOM elements, and socket events. Keep it optimized for direct execution in a Replit sandbox environment.
