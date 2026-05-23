@@ -7,6 +7,7 @@ import { PsychLogin } from "@/pages/PsychLogin";
 import { PsychDashboard } from "@/pages/PsychDashboard";
 import { useStore } from "@/lib/store";
 import type { UserProfile, Companion } from "@/lib/store";
+import { useDbLoad, useDbSync } from "@/hooks/useDbSync";
 
 type Screen =
   | "landing"
@@ -15,13 +16,17 @@ type Screen =
   | "psych-login"
   | "psych-dashboard";
 
-export default function App() {
+function AppInner() {
   const { user, companion, setUser, setCompanion } = useStore();
   const [screen, setScreen] = useState<Screen>(() => {
     if (user && companion) return "student";
     return "landing";
   });
   const [psychLicenseId, setPsychLicenseId] = useState("");
+
+  // Load from DB on mount, sync changes back to DB
+  useDbLoad();
+  useDbSync();
 
   const handleSelectRole = (role: "student" | "psych") => {
     if (role === "student") {
@@ -76,4 +81,8 @@ export default function App() {
       )}
     </AnimatePresence>
   );
+}
+
+export default function App() {
+  return <AppInner />;
 }
