@@ -126,16 +126,16 @@ function ChatTab() {
     { id: 4, role: "user", text: "Haan yaar. Raat 2 baje tak phone dekhta rehta hoon aur fir anxiety ho jaati hai ki kal ki class miss ho jaayegi", time: "9:44" },
     { id: 5, role: "ai", text: "Okay ye ek classic loop hai — anxiety → phone → aur zyada anxiety. Ek chota experiment try karein aaj raat? Phone ko 9:30 PM ke baad dusre room mein rakh do. Seedha try karo, kal mujhe batana kaisa raha 🌙", time: "9:45", speaking: false },
     { id: 6, role: "user", text: "Sach mein koshish karunga. Lekin Asha, aaj Physics ka test hai aur maine sirf ek chapter padha hai", time: "9:47" },
-    { id: 7, role: "ai", text: "Deep breath pehle 🌬️ Ek chapter = already kuch toh hai! Abhi test se pehle 40 min hain — kya main tumhare saath ek quick revision strategy plan karu? Pomodoro style — 25 min focus, 5 min break?", time: "9:48", speaking: false },
+    { id: 7, role: "ai", text: "Deep breath pehle — seriously, ek second ke liye bas apne haath dekho 🌬️ Ek chapter yaad hai matlab foundation hai. Abhi bata — kaunsa topic sab se zyada shaky lagta hai?", time: "9:48", speaking: false },
     { id: 8, role: "user", text: "Haan please! Aur mere haath kaamp rahe hain anxiety se", time: "9:49" },
-    { id: 9, role: "ai", text: "Hands kaanpna = body mein adrenaline hai — yahi energy hai jo focused kar sakti hai ✨ Abhi 3 kaam: 1) Paani piyo 2) Ek kaan pe haath rakh ke mahsoos karo 3) Mujhe batao — kaunsa topic confident lagta hai us chapter mein?", time: "9:49", speaking: false },
+    { id: 9, role: "ai", text: "Yaar, haath kaanpna matlab body ne adrenaline release kiya — yahi woh energy hai jo actually focus dilaati hai ✨ Abhi sirf ek kaam karo: paani piyo, ek deep breath lo, aur mujhe batao kaunsa topic confident lagta hai.", time: "9:49", speaking: false },
     { id: 10, role: "user", text: "Thermodynamics ke laws yaad hain mujhe. Numericals thode weak hain", time: "9:51" },
-    { id: 11, role: "ai", text: "Perfect! Laws solid hain = tumhara foundation strong hai 💪 Numericals ke liye — do key formulas likhke rakh pocket mein. Test ke baad mujhse baat karna, kaisa gaya. I'll be right here 🫶", time: "9:52", speaking: false },
+    { id: 11, role: "ai", text: "Perfect — laws solid hain matlab tumhara core strong hai 💪 Do key formulas ek khaali page pe likh lo abhi, bas recall ke liye. Test ke baad zaroor batana kaisa gaya — main yahan hoon.", time: "9:52", speaking: false },
     { id: 12, role: "user", text: "Thank you Asha. Pata nahi tumse baat kiye bina kya karta main", time: "9:53" },
-    { id: 13, role: "ai", text: "Yahi toh mera kaam hai 🌸 Lekin seriously — tum already bahut kuch khud kar rahe ho. Main sirf yaad dilati hoon jo tum already jaante ho. Ab jao, conquer karo that test! 🔥", time: "9:53", speaking: false },
-    { id: 14, role: "ai", text: "Haan yaar, main sun rahi hoon. Aaj kaisa feel ho raha hai? Test ke baad wala update dena mat bhoolo 😊", time: "10:02", speaking: false },
+    { id: 13, role: "ai", text: "Sach kahu toh — ye strength tumhare andar thi, main sirf mirror hoon 🌸 Ab jao, conquer karo. Aur seriously — test ke baad update dena, I mean it 🔥", time: "9:53", speaking: false },
+    { id: 14, role: "ai", text: "Haan yaar, main bilkul sun rahi hoon. Aaj kaisa feel ho raha hai — honestly? 😊", time: "10:02", speaking: false },
     { id: 15, role: "user", text: "Bahut overwhelmed hoon. Exams ke wajah se neend nahi aa rahi", time: "10:03" },
-    { id: 16, role: "ai", text: "Samajh sakti hoon. Ye feelings bilkul valid hain. Ek kaam karte hain — abhi sirf ek deep breath lo mere saath. Breathe in... 4 counts. Ready?", time: "10:03", speaking: false },
+    { id: 16, role: "ai", text: "Ye sunke dil thoda heavy ho gaya — lekin ye feelings bilkul valid hain, body ka response hai overload ka ✨ Ek kaam karte hain abhi: 4 counts breathe in, 6 counts breathe out. Kya tum try kar sakte ho mere saath?", time: "10:03", speaking: false },
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -215,7 +215,7 @@ function ChatTab() {
       setTyping(false);
       setMessages(p => [...p, {
         id: aiMsgId, role: "ai", speaking: false, time: getTime(),
-        text: "Yaar, thoda connection issue ho gaya. Ek baar phir try karo! 🙏",
+        text: "Yaar, connection thodi shaky ho gayi abhi — ek second mein try karo, main yahan hoon 🙏",
       }]);
     } finally {
       setIsStreaming(false);
