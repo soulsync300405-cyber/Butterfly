@@ -82,7 +82,7 @@ router.post("/chat", async (req, res) => {
   try {
     const stream = await openai.chat.completions.create({
       model: "gpt-5-mini",
-      max_completion_tokens: 300,
+      max_completion_tokens: 8192,
       messages: chatMessages,
       stream: true,
     });
