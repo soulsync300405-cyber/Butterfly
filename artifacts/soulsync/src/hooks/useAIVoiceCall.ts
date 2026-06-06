@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { useStore } from "@/lib/store";
 
 export type AICallState = "idle" | "listening" | "thinking" | "speaking";
 
@@ -96,10 +97,15 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
   const [ashaText, setAshaText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const historyRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const { user, companion } = useStore();
+  const userName = user?.name || "Student";
+
   // Use a ref so recognition.onend always reads the LATEST transcript (avoids stale closure)
   const transcriptRef = useRef("");
   const activeRef = useRef(false);
   const recognitionRef = useRef<any>(null);
+  const errorRef = useRef<string | null>(null);
 
   const updateTranscript = (t: string) => {
     transcriptRef.current = t;
@@ -154,6 +160,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
       return;
     }
 
+    errorRef.current = null;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SR();
     recognitionRef.current = recognition;
@@ -172,24 +179,86 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
 
     recognition.onerror = (e: any) => {
       if (e.error !== "no-speech" && e.error !== "aborted") {
-        setError(`Mic: ${e.error}`);
+        errorRef.current = e.error;
+        if (e.error === "network") {
+          setError("Mic: network (Speech transcription servers are unreachable. Try Chrome/Edge, check internet, or type below)");
+        } else if (e.error === "not-allowed") {
+          setError("Mic: not-allowed (Microphone permission blocked. Please enable mic access in your browser)");
+        } else if (e.error === "service-not-allowed") {
+          setError("Mic: service-not-allowed (Speech recognition is blocked or unsupported by your browser)");
+        } else {
+          setError(`Mic: ${e.error}`);
+        }
       }
     };
 
-    recognition.onend = () => {
+    recognition.onend = async () => {
       if (!activeRef.current) return;
       const finalTranscript = transcriptRef.current; // ← always latest via ref
       updateTranscript("");
 
+      // Stop auto-listening if an error (like network) occurred
+      if (errorRef.current) {
+        setCallState("idle");
+        return;
+      }
+
       if (finalTranscript.trim().length > 2) {
         setCallState("thinking");
-        setTimeout(() => {
+        historyRef.current.push({ role: "user", content: finalTranscript });
+
+        try {
+          const resp = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: historyRef.current.slice(-12),
+              userName,
+              companionName,
+              language: companion?.language,
+            }),
+          });
+
+          if (!resp.ok || !resp.body) throw new Error("No response");
+
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let fullText = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split("\n")) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.content) {
+                  fullText += data.content;
+                }
+              } catch { /* partial JSON */ }
+            }
+          }
+
+          if (fullText.trim().length > 0) {
+            if (!activeRef.current) return;
+            setAshaText(fullText);
+            historyRef.current.push({ role: "assistant", content: fullText });
+            speak(fullText, () => {
+              if (activeRef.current && !errorRef.current) setTimeout(startListening, 700);
+            });
+          } else {
+            throw new Error("Empty reply");
+          }
+        } catch (err) {
           if (!activeRef.current) return;
           const reply = pickReply(finalTranscript);
+          setAshaText(reply);
+          historyRef.current.push({ role: "assistant", content: reply });
           speak(reply, () => {
-            if (activeRef.current) setTimeout(startListening, 700);
+            if (activeRef.current && !errorRef.current) setTimeout(startListening, 700);
           });
-        }, 700 + Math.random() * 500);
+        }
       } else {
         // Nothing heard — keep listening
         setTimeout(startListening, 500);
@@ -198,14 +267,81 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
 
     setCallState("listening");
     try { recognition.start(); } catch (_) {}
-  }, [speak]);
+  }, [speak, userName, companionName, companion]);
+
+  const sendText = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    setCallState("thinking");
+    historyRef.current.push({ role: "user", content: text });
+
+    try {
+      const resp = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: historyRef.current.slice(-12),
+          userName,
+          companionName,
+          language: companion?.language,
+        }),
+      });
+
+      if (!resp.ok || !resp.body) throw new Error("No response");
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.content) {
+              fullText += data.content;
+            }
+          } catch { /* partial JSON */ }
+        }
+      }
+
+      if (fullText.trim().length > 0) {
+        if (!activeRef.current) return;
+        setAshaText(fullText);
+        historyRef.current.push({ role: "assistant", content: fullText });
+        speak(fullText, () => {
+          if (activeRef.current && !errorRef.current) setTimeout(startListening, 700);
+        });
+      } else {
+        throw new Error("Empty reply");
+      }
+    } catch (err) {
+      if (!activeRef.current) return;
+      const reply = pickReply(text);
+      setAshaText(reply);
+      historyRef.current.push({ role: "assistant", content: reply });
+      speak(reply, () => {
+        if (activeRef.current && !errorRef.current) setTimeout(startListening, 700);
+      });
+    }
+  }, [speak, userName, companionName, companion]);
+
+  const clearError = useCallback(() => {
+    setError(null);
+    errorRef.current = null;
+    if (activeRef.current) startListening();
+  }, [startListening]);
 
   const startCall = useCallback(() => {
     activeRef.current = true;
     setError(null);
+    errorRef.current = null;
     updateTranscript("");
 
     const greeting = `Heyy! ${companionName} bol rahi hoon. Aaj kaisa feel ho raha hai? Main poori tarah yahan hoon tumhare liye.`;
+    historyRef.current = [{ role: "assistant", content: greeting }];
     speak(greeting, () => {
       if (activeRef.current) setTimeout(startListening, 600);
     });
@@ -218,6 +354,8 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
     setCallState("idle");
     updateTranscript("");
     setAshaText("");
+    setError(null);
+    errorRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -228,5 +366,5 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
     };
   }, []);
 
-  return { callState, transcript, ashaText, error, startCall, stopCall, hasSpeech, hasSR };
+  return { callState, transcript, ashaText, error, startCall, stopCall, sendText, clearError, hasSpeech, hasSR };
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Shield, Lock, RefreshCw, ChevronLeft } from "lucide-react";
+import { Shield, Lock, RefreshCw, ChevronLeft, Zap } from "lucide-react";
 
 interface PsychLoginProps {
   onLogin: (id: string) => void;
@@ -17,9 +17,14 @@ export function PsychLogin({ onLogin, onBack }: PsychLoginProps) {
     setLoading(true);
     setError("");
     setTimeout(() => {
-      if (licenseId.length >= 6) { onLogin(licenseId); }
-      else { setError("Invalid Medical License ID. Try: MCI-2024-DEMO"); setLoading(false); }
-    }, 1500);
+      if (licenseId.trim().length >= 6) { onLogin(licenseId.trim()); }
+      else { setError("Invalid Medical License ID — must be at least 6 characters"); setLoading(false); }
+    }, 1200);
+  };
+
+  const useDemoCredentials = () => {
+    setLicenseId("MCI-2024-DEMO");
+    setError("");
   };
 
   return (
@@ -48,6 +53,21 @@ export function PsychLogin({ onLogin, onBack }: PsychLoginProps) {
             </div>
           </div>
 
+          {/* Demo credentials banner */}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+            className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-amber-700">🧪 Demo Access</p>
+              <p className="text-[11px] text-amber-600 mt-0.5">Use <code className="bg-amber-100 px-1 rounded font-mono font-bold">MCI-2024-DEMO</code> to enter the dashboard</p>
+            </div>
+            <button
+              onClick={useDemoCredentials}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors flex-shrink-0">
+              <Zap size={11} /> Fill
+            </button>
+          </motion.div>
+
           <div className="space-y-3">
             <label className="text-sm font-medium text-foreground">Medical License ID</label>
             <div className="relative">
@@ -58,18 +78,18 @@ export function PsychLogin({ onLogin, onBack }: PsychLoginProps) {
                 data-testid="input-license-id"
                 className="w-full bg-background border border-border rounded-xl px-4 py-3 pl-10 text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-all"
                 onKeyDown={e => e.key === "Enter" && handleLogin()}
+                autoFocus
               />
               <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             </div>
             {error && <p className="text-destructive text-sm">{error}</p>}
-            <p className="text-muted-foreground text-xs">Demo: use any ID with 6+ characters</p>
           </div>
 
           <button onClick={handleLogin} disabled={loading} data-testid="btn-psych-login"
             className="w-full py-4 rounded-2xl font-semibold text-sm bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20">
             {loading
               ? <><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><RefreshCw size={16} /></motion.div> Verifying...</>
-              : <><Lock size={16} /> Verify &amp; Enter</>}
+              : <><Lock size={16} /> Verify &amp; Enter Clinical Portal</>}
           </button>
 
           <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">

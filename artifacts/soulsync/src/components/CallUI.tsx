@@ -10,7 +10,7 @@ import { useAIVoiceCall } from "@/hooks/useAIVoiceCall";
 import { useWebRTC } from "@/hooks/useWebRTC";
 
 interface CallUIProps {
-  type: "ai" | "psychologist";
+  type: "ai-voice" | "ai-video" | "psychologist";
   companion?: Companion | null;
   psychName?: string;
   onEnd: () => void;
@@ -18,9 +18,9 @@ interface CallUIProps {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-async function requestStream(): Promise<MediaStream | null> {
+async function requestStream(video: boolean = true): Promise<MediaStream | null> {
   try {
-    return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    return await navigator.mediaDevices.getUserMedia({ video, audio: true });
   } catch {
     try {
       return await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -30,7 +30,7 @@ async function requestStream(): Promise<MediaStream | null> {
   }
 }
 
-function useLocalStream() {
+function useLocalStream(video: boolean = true) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [hasVideo, setHasVideo] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
@@ -38,14 +38,14 @@ function useLocalStream() {
   const [camOff, setCamOff] = useState(false);
 
   const start = useCallback(async () => {
-    const s = await requestStream();
+    const s = await requestStream(video);
     if (s) {
       setStream(s);
       setHasVideo(s.getVideoTracks().length > 0);
       setHasAudio(s.getAudioTracks().length > 0);
     }
     return s;
-  }, []);
+  }, [video]);
 
   const stop = useCallback(() => {
     stream?.getTracks().forEach(t => t.stop());
@@ -112,7 +112,7 @@ function useDuration(running: boolean) {
 // ── Main CallUI ──────────────────────────────────────────────────────────────
 export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const [phase, setPhase] = useState<"permission" | "starting" | "active">("permission");
-  const local = useLocalStream();
+  const local = useLocalStream(type !== "ai-voice");
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [speakerMuted, setSpeakerMuted] = useState(false);
@@ -126,7 +126,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   );
 
   const duration = useDuration(phase === "active");
-  const _frame = useFrameCapture(local.stream, phase === "active" && type === "ai");
+  const _frame = useFrameCapture(local.stream, phase === "active" && type === "ai-video");
 
   // Wire local stream → local video element
   useEffect(() => {
@@ -163,8 +163,8 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   }, [local, aiCall, type, webrtc, onEnd]);
 
   const bars = Array.from({ length: 24 });
-  const aiSpeaking = type === "ai" && aiCall.callState === "speaking";
-  const aiListening = type === "ai" && aiCall.callState === "listening";
+  const aiSpeaking = (type === "ai-voice" || type === "ai-video") && aiCall.callState === "speaking";
+  const aiListening = (type === "ai-voice" || type === "ai-video") && aiCall.callState === "listening";
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -208,11 +208,11 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                   </motion.div>
                   <div>
                     <h2 className="text-xl font-black text-white font-serif">
-                      {type === "ai" ? `Connect with ${companion?.name || "Asha"}` : `Call Dr. ${psychName}`}
+                      {(type === "ai-voice" || type === "ai-video") ? `Connect with ${companion?.name || "Asha"}` : `Call Dr. ${psychName}`}
                     </h2>
                     <p className="text-white/50 text-sm mt-1">
-                      {type === "ai"
-                        ? "Your AI companion needs your camera and mic to see and hear you"
+                      {(type === "ai-voice" || type === "ai-video")
+                        ? (type === "ai-video" ? "Your AI companion needs your camera and mic to see and hear you" : "Your AI companion needs your mic to hear you")
                         : "Allow access so your psychologist can see and hear you clearly"}
                     </p>
                   </div>
@@ -221,9 +221,9 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                 {/* Permission items */}
                 <div className="space-y-2.5">
                   {[
-                    { icon: Mic, label: "Microphone", sub: "Real-time voice conversation" },
-                    { icon: Camera, label: "Camera", sub: type === "ai" ? "Visual context for your AI companion" : "Face-to-face session" },
-                  ].map(item => (
+                    { icon: Mic, label: "Microphone", sub: "Real-time voice conversation", show: true },
+                    { icon: Camera, label: "Camera", sub: (type === "ai-video" || type === "ai-voice") ? "Visual context for your AI companion" : "Face-to-face session", show: type !== "ai-voice" },
+                  ].filter(item => item.show).map(item => (
                     <div key={item.label}
                       className="flex items-center gap-4 rounded-2xl border border-white/8 px-4 py-3.5"
                       style={{ background: "rgba(255,255,255,0.04)" }}>
@@ -261,7 +261,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                       animate={{ x: ["-100%", "200%"] }}
                       transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                       style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)", transform: "skewX(-20deg)" }} />
-                    {type === "ai" ? "Start AI Session" : "Join Call"}
+                    {(type === "ai-voice" || type === "ai-video") ? "Start AI Session" : "Join Call"}
                   </motion.button>
                 </div>
               </div>
@@ -276,7 +276,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
             <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
               className="w-12 h-12 rounded-full border-2 border-primary/30 border-t-primary" />
             <p className="text-white/60 text-sm">
-              {type === "ai" ? "Connecting to Asha..." : "Joining room..."}
+              {(type === "ai-voice" || type === "ai-video") ? "Connecting to Asha..." : "Joining room..."}
             </p>
           </motion.div>
         )}
@@ -287,7 +287,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
             className="w-full h-full flex flex-col">
 
             {/* ── AI CALL LAYOUT ── */}
-            {type === "ai" && (
+            {(type === "ai-voice" || type === "ai-video") && (
               <div className="flex-1 flex flex-col items-center justify-between py-10 px-6 relative">
 
                 {/* Top bar */}
@@ -413,9 +413,38 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                     </div>
                   )}
 
-                  {/* Error */}
+                  {/* Error / Fallback typing HUD */}
                   {aiCall.error && (
-                    <p className="text-center text-xs text-amber-400">{aiCall.error}</p>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className="bg-card/90 border border-white/10 rounded-2xl p-4 space-y-3 shadow-xl max-w-sm mx-auto backdrop-blur-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
+                          ⚠️ {aiCall.error === "Mic: network" ? "Voice connection issue" : aiCall.error}
+                        </span>
+                        <button 
+                          onClick={aiCall.clearError}
+                          className="text-[10px] font-black text-primary hover:underline uppercase tracking-widest bg-transparent border-none cursor-pointer"
+                        >
+                          Retry Mic 🔄
+                        </button>
+                      </div>
+                      <p className="text-white/60 text-xs leading-normal">
+                        Your browser's speech recognition service is temporarily offline or unreachable. You can type instead:
+                      </p>
+                      <div className="flex gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2">
+                        <input
+                          type="text"
+                          placeholder="Type your response & press Enter..."
+                          className="flex-1 bg-transparent border-none text-white text-xs outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                              aiCall.sendText(e.currentTarget.value.trim());
+                              e.currentTarget.value = "";
+                            }
+                          }}
+                        />
+                      </div>
+                    </motion.div>
                   )}
                 </div>
 
@@ -431,8 +460,10 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                     style={{ background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)" }}>
                     <PhoneOff size={22} className="text-white" />
                   </motion.button>
-                  <CtrlBtn icon={local.camOff ? EyeOff : Camera} active={!local.camOff}
-                    onClick={local.toggleCam} label="Camera" />
+                  {type !== "ai-voice" && (
+                    <CtrlBtn icon={local.camOff ? EyeOff : Camera} active={!local.camOff}
+                      onClick={local.toggleCam} label="Camera" />
+                  )}
                   <CtrlBtn icon={Radio} active label="AI" onClick={() => {}} />
                 </div>
 

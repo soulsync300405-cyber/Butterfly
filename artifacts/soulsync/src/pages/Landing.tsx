@@ -12,16 +12,16 @@ export function Landing({ onSelectRole }: LandingProps) {
       initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       {/* Ambient blobs */}
       <div className="absolute top-1/4 left-1/6 w-72 h-72 rounded-full opacity-20 blur-3xl pointer-events-none"
-        style={{ background: "radial-gradient(circle, hsl(145 33% 40%), transparent)" }} />
+        style={{ background: "radial-gradient(circle, hsl(var(--primary)), transparent)" }} />
       <div className="absolute bottom-1/4 right-1/6 w-64 h-64 rounded-full opacity-15 blur-3xl pointer-events-none"
-        style={{ background: "radial-gradient(circle, hsl(38 92% 50%), transparent)" }} />
+        style={{ background: "radial-gradient(circle, hsl(var(--accent)), transparent)" }} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full opacity-10 blur-3xl pointer-events-none"
-        style={{ background: "radial-gradient(circle, hsl(106 33% 60%), transparent)" }} />
+        style={{ background: "radial-gradient(circle, hsl(var(--secondary)), transparent)" }} />
 
       {/* Floating particles */}
       {Array.from({ length: 12 }).map((_, i) => (
         <motion.div key={i} className="absolute w-1.5 h-1.5 rounded-full opacity-30 pointer-events-none"
-          style={{ background: i % 3 === 0 ? "hsl(145 33% 40%)" : i % 3 === 1 ? "hsl(38 92% 50%)" : "hsl(106 33% 60%)",
+          style={{ background: i % 3 === 0 ? "hsl(var(--primary))" : i % 3 === 1 ? "hsl(var(--accent))" : "hsl(var(--secondary))",
             left: `${10 + (i * 7.5) % 80}%`, top: `${15 + (i * 13) % 70}%` }}
           animate={{ y: [-8, 8, -8], opacity: [0.2, 0.5, 0.2] }}
           transition={{ duration: 3 + (i % 3), repeat: Infinity, delay: i * 0.4 }}
@@ -34,7 +34,7 @@ export function Landing({ onSelectRole }: LandingProps) {
           transition={{ type: "spring", duration: 0.8 }} className="flex flex-col items-center gap-4">
           <AnimeAvatar speaking={false} size={110} style="soft-pastel" gender="female" />
           <div>
-            <h1 className="text-5xl font-black tracking-tight font-serif" style={{ color: "hsl(0 0% 10%)" }}>
+            <h1 className="text-5xl font-black tracking-tight font-serif text-foreground">
               Soul<span className="text-primary">Sync</span>
             </h1>
             <p className="text-muted-foreground mt-2 text-base">

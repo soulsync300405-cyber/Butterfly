@@ -32,7 +32,7 @@ router.get("/sync/:clientId", async (req, res) => {
       user: user[0] ?? null,
       companion: companion[0] ?? null,
       chatMessages: chatMsgs,
-      completedQuests: quests.map(q => q.questId),
+      completedQuests: quests.map((q: any) => q.questId),
       psychMessages: groupByPsychId(psychMsgs),
       psychBookings: groupBookingsById(bookings),
       settings: settings[0] ?? null,
@@ -122,7 +122,7 @@ router.post("/sync", async (req, res) => {
       const existing = await db.select({ questId: questProgressTable.questId })
         .from(questProgressTable)
         .where(eq(questProgressTable.clientId, clientId));
-      const existingIds = new Set(existing.map(r => r.questId));
+      const existingIds = new Set(existing.map((r: any) => r.questId));
       const newQuests = completedQuests.filter(id => !existingIds.has(id));
       if (newQuests.length > 0) {
         await db.insert(questProgressTable).values(

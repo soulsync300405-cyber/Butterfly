@@ -59,7 +59,7 @@ export function useDbLoad() {
 
         if (data.settings) {
           updateSettings({
-            theme: data.settings.theme ?? "light",
+            theme: (data.settings.theme === "light" ? "beige" : (data.settings.theme ?? "beige")) as any,
             notifications: data.settings.notifications ?? true,
             dailyReminder: data.settings.dailyReminder ?? "09:00",
             weeklyReport: data.settings.weeklyReport ?? true,

@@ -1,5 +1,5 @@
 import { AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Landing } from "@/pages/Landing";
 import { Onboarding } from "@/pages/Onboarding";
 import { StudentApp } from "@/pages/StudentApp";
@@ -23,6 +23,24 @@ function AppInner() {
     return "landing";
   });
   const [psychLicenseId, setPsychLicenseId] = useState("");
+
+  const theme = useStore((s) => s.settings.theme);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("dark", "theme-cyberpunk", "theme-antigravity", "theme-sakura", "theme-retro", "light");
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else if (theme === "cyberpunk") {
+      root.classList.add("theme-cyberpunk");
+    } else if (theme === "antigravity") {
+      root.classList.add("theme-antigravity");
+    } else if (theme === "sakura") {
+      root.classList.add("theme-sakura");
+    } else if (theme === "retro") {
+      root.classList.add("theme-retro");
+    }
+  }, [theme]);
 
   // Load from DB on mount, sync changes back to DB
   useDbLoad();

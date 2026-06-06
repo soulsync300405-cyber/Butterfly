@@ -22,7 +22,7 @@ export type UserProfile = {
 };
 
 export type Settings = {
-  theme: 'light' | 'dark';
+  theme: 'beige' | 'dark' | 'cyberpunk' | 'antigravity' | 'sakura' | 'retro';
   notifications: boolean;
   dailyReminder: string;
   weeklyReport: boolean;
@@ -77,7 +77,7 @@ export const useStore = create<StoreState>()(
       companion: null,
       completedQuests: [],
       settings: {
-        theme: 'light',
+        theme: 'beige',
         notifications: true,
         dailyReminder: '09:00',
         weeklyReport: true,

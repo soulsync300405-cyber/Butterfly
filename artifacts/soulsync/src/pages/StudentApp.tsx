@@ -5,12 +5,13 @@ import {
   Send, Mic, MicOff, Eye, Phone, Video, ChevronRight, Flame, Star, X,
   Play, Pause, CheckCircle, Clock, Trophy, TrendingUp, Bell, Lock, Volume2,
   LogOut, Sliders, RefreshCw, ChevronDown, ChevronUp, Shield, AlertTriangle,
-  Calendar, ArrowRight, MoreVertical, Sparkles, Loader2, PhoneOff
+  Calendar, ArrowRight, MoreVertical, Sparkles, Loader2, PhoneOff, Camera
 } from "lucide-react";
 import { AnimeAvatar } from "@/components/AnimeAvatar";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import { CallUI } from "@/components/CallUI";
 import { LiveCallModal } from "@/components/LiveCallModal";
+import { AntigravityCanvas } from "@/components/AntigravityCanvas";
 import { useStore } from "@/lib/store";
 import { useRegisterSocket } from "@/hooks/useSocket";
 import { useStudentCall } from "@/hooks/useStudentCall";
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "quests", label: "Quests", icon: Target },
   { id: "learn", label: "EQ Learning", icon: BookOpen },
+  { id: "scan", label: "Vibe Check", icon: Camera },
   { id: "psych", label: "Talk to Psychologist", icon: UserCheck },
   { id: "analytics", label: "Analytics", icon: BarChart2 },
   { id: "settings", label: "Settings", icon: SettingsIcon },
@@ -40,9 +42,11 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState("chat");
   const { user, companion, completedQuests, settings } = useStore();
   const socket = useRegisterSocket("user", user?.name || "Anonymous");
+  const [playingCourse, setPlayingCourse] = useState<typeof COURSES[0] | null>(null);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background relative z-10">
+      {settings.theme === "antigravity" && <AntigravityCanvas />}
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-card border-r border-border flex flex-col">
         {/* Brand */}
@@ -105,7 +109,8 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
             transition={{ duration: 0.15 }} className="h-full overflow-y-auto">
             {tab === "chat" && <ChatTab />}
             {tab === "quests" && <QuestsTab />}
-            {tab === "learn" && <LearnTab />}
+            {tab === "learn" && <LearnTab playing={playingCourse} setPlaying={setPlayingCourse} />}
+            {tab === "scan" && <ScanTab setTab={setTab} setPlayingCourse={setPlayingCourse} />}
             {tab === "psych" && <PsychTab socket={socket} />}
             {tab === "analytics" && <AnalyticsTab />}
             {tab === "settings" && <SettingsTab />}
@@ -141,7 +146,7 @@ function ChatTab() {
   const [typing, setTyping] = useState(false);
   const [recording, setRecording] = useState(false);
   const [showCall, setShowCall] = useState(false);
-  const [callType, setCallType] = useState<"ai" | "psychologist">("ai");
+  const [callType, setCallType] = useState<"ai-voice" | "ai-video" | "psychologist">("ai-voice");
   const [showVision, setShowVision] = useState(false);
   const [visionResult, setVisionResult] = useState<any>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
@@ -261,10 +266,10 @@ function ChatTab() {
           <button onClick={() => setShowCustomizer(true)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Customize companion">
             <Sliders size={16} />
           </button>
-          <button onClick={() => { setCallType("ai"); setShowCall(true); }} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+          <button onClick={() => { setCallType("ai-voice"); setShowCall(true); }} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="AI Voice Call">
             <Phone size={16} />
           </button>
-          <button onClick={() => { setCallType("ai"); setShowCall(true); }} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+          <button onClick={() => { setCallType("ai-video"); setShowCall(true); }} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="AI Video Call">
             <Video size={16} />
           </button>
           <button onClick={runVision} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Vision Analysis">
@@ -666,24 +671,133 @@ function QuestsTab() {
 }
 
 // ─── LEARN TAB ───────────────────────────────────────────────────────────────
-function LearnTab() {
-  const [playing, setPlaying] = useState<typeof COURSES[0] | null>(null);
-  const [progress, setProgress] = useState(18);
+function LearnTab({ playing, setPlaying }: { playing: typeof COURSES[0] | null; setPlaying: (c: typeof COURSES[0] | null) => void }) {
+  const [elapsed, setElapsed] = useState(0);
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [showIntro, setShowIntro] = useState(false);
   const { companion } = useStore();
+
   const featured = COURSES.find(c => c.featured) || COURSES[0];
-  const rows = [
+
+  useEffect(() => {
+    let introTimer: any;
+    if (playing) {
+      setShowIntro(true);
+      introTimer = setTimeout(() => {
+        setShowIntro(false);
+      }, 2800);
+    }
+    return () => {
+      if (introTimer) clearTimeout(introTimer);
+    };
+  }, [playing]);
+
+  useEffect(() => {
+    if (!playing || showIntro) {
+      setElapsed(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setElapsed(e => e + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [playing, showIntro]);
+
+  const categories = ["All", "ADHD", "OCD", "Anxiety", "Focus", "Grounding", "Wellness"];
+
+  const filteredCourses = activeCategory === "All" 
+    ? COURSES 
+    : COURSES.filter(c => c.category === activeCategory);
+
+  const rows = activeCategory === "All" ? [
     { label: "Recommended for You", courses: COURSES.slice(0, 5) },
     { label: "ADHD & Focus Series", courses: COURSES.filter(c => ["ADHD", "Focus"].includes(c.category)) },
     { label: "Anxiety Toolkit", courses: COURSES.filter(c => c.category === "Anxiety") },
     { label: "Wellness Essentials", courses: COURSES.filter(c => ["Wellness", "Grounding", "EQ"].includes(c.category)) },
+  ] : [
+    { label: `${activeCategory} Series`, courses: filteredCourses }
   ];
 
+  const getCompanionCommentary = (courseId: number, seconds: number) => {
+    const cName = companion?.name || "Asha";
+    if (courseId === 1) { // Defeating Academic Burnout
+      if (seconds < 2) return "";
+      if (seconds >= 2 && seconds < 10) return `Heyy! Ye series kafi important hai, ${cName} is watching it with you. 👀`;
+      if (seconds >= 10 && seconds < 22) return `Academic burnout is real, exams and placement expectations can block your mind.`;
+      if (seconds >= 22 && seconds < 35) return `Ruko, pause lo aur points note karo — we will try one technique today, ok? 📝`;
+      if (seconds >= 35 && seconds < 50) return `Remember, marks are just numbers, they don't define who you are.`;
+      return `Aap kaisa feel kar rahe ho video dekhne ke baad? Share karo. 💬`;
+    }
+    if (courseId === 2) { // Anxiety & Grounding
+      if (seconds < 2) return "";
+      if (seconds >= 2 && seconds < 10) return `Lambi saans lo. Let's learn these grounding tools together. 🌬️`;
+      if (seconds >= 10 && seconds < 22) return `5-4-3-2-1 technique is excellent when anxiety hits.`;
+      if (seconds >= 22 && seconds < 35) return `Notice the things around you — chest heavy feel ho toh count down starts.`;
+      return `Kya hum abhi ye breathing exercise try karein? Haan na? 🌬️`;
+    }
+    // Default fallback
+    if (seconds < 2) return "";
+    if (seconds >= 2 && seconds < 12) return `Interesting topic, right? Main poori tarah yahan hoon tumhare sath. 🍿`;
+    if (seconds >= 12 && seconds < 25) return `Suno, is concept ko apply karke dekho hostel life mein.`;
+    return `Let's discuss this once the video completes, theek hai? 💬`;
+  };
+
+  const currentCommentary = playing ? getCompanionCommentary(playing.id, elapsed) : "";
+
   if (playing) {
-    const ytId = (playing as typeof playing & { youtubeId?: string }).youtubeId;
+    const ytId = (playing as any).youtubeId;
     return (
       <div className="h-full flex flex-col bg-[#0a0a0c]">
         {/* Video area */}
         <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+          <AnimatePresence>
+            {showIntro && (
+              <motion.div
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.4 }}
+                className="absolute inset-0 bg-black flex flex-col items-center justify-center z-50 select-none"
+              >
+                {/* Netflix-style zoom-in SoulSync letter S logo */}
+                <motion.div
+                  initial={{ scale: 0.3, opacity: 0, textShadow: "0 0 0px rgba(220, 38, 38, 0)" }}
+                  animate={{ scale: [0.3, 1, 1.05], opacity: 1, textShadow: "0 0 35px rgba(220, 38, 38, 0.95)" }}
+                  transition={{ duration: 2.2, times: [0, 0.5, 1], ease: "easeOut" }}
+                  className="text-8xl sm:text-9xl font-black text-red-600 font-serif relative tracking-tighter"
+                >
+                  S
+                  {/* Neon laser sweep bar */}
+                  <motion.div
+                    initial={{ left: "-15%", opacity: 0 }}
+                    animate={{ left: ["-15%", "115%"], opacity: [0, 1, 1, 0] }}
+                    transition={{ duration: 1.8, delay: 0.3, ease: "easeInOut" }}
+                    className="absolute top-0 bottom-0 w-1.5 bg-gradient-to-b from-transparent via-red-400 to-transparent shadow-[0_0_20px_rgba(239,68,68,0.9)]"
+                  />
+                </motion.div>
+                
+                {/* spaced out presents tag */}
+                <motion.p
+                  initial={{ opacity: 0, letterSpacing: "0.2em" }}
+                  animate={{ opacity: [0, 0, 0.75], letterSpacing: "0.45em" }}
+                  transition={{ duration: 2.2, times: [0, 0.4, 1] }}
+                  className="text-[9px] sm:text-[10px] text-white/55 font-bold uppercase mt-6 tracking-widest font-sans"
+                >
+                  A SOULSYNC ORIGINAL
+                </motion.p>
+
+                {/* Tu-dum audio cue visual representation */}
+                <motion.p
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: [0, 0.65, 0] }}
+                  transition={{ duration: 1.6, delay: 0.1 }}
+                  className="text-[10px] text-red-500/60 font-mono mt-3"
+                >
+                  * Tu-dum... 🎵 *
+                </motion.p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {ytId ? (
             <iframe
               key={ytId}
@@ -702,24 +816,30 @@ function LearnTab() {
             </div>
           )}
           {/* AI companion corner overlay */}
-          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 1.5 }}
-            className="absolute bottom-3 right-3 flex items-end gap-2 pointer-events-none">
-            <div className="bg-black/70 backdrop-blur-sm rounded-xl px-3 py-2 max-w-[170px] text-right">
-              <p className="text-white text-xs leading-snug">"{playing.desc.slice(0, 55)}..."</p>
-            </div>
-            <AnimeAvatar size={38} style={companion?.appearance as any || "soft-pastel"} gender={companion?.gender || "female"} speaking />
-          </motion.div>
+          <AnimatePresence>
+            {currentCommentary && (
+              <motion.div initial={{ opacity: 0, scale: 0.8, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }}
+                className="absolute bottom-6 right-6 flex items-end gap-3 pointer-events-none z-10 max-w-xs">
+                <div className="bg-card/90 border border-primary/20 backdrop-blur-md rounded-2xl px-4 py-3 shadow-2xl text-left text-foreground">
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-wider">{companion?.name || "Asha"}</p>
+                  <p className="text-xs leading-normal mt-1">"{currentCommentary}"</p>
+                </div>
+                <div className="flex-shrink-0 bg-background/80 border border-border/40 p-1 rounded-2xl backdrop-blur-sm shadow-xl">
+                  <AnimeAvatar size={44} style={companion?.appearance as any || "soft-pastel"} gender={companion?.gender || "female"} speaking />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         {/* Controls bar */}
-        <div className="bg-[#111] px-6 py-3 flex items-center justify-between border-t border-white/10">
+        <div className="bg-card px-6 py-4 flex items-center justify-between border-t border-border flex-shrink-0">
           <div>
-            <p className="font-bold text-sm text-white">{playing.ep1}</p>
-            <p className="text-xs text-white/40">{playing.title} · Episode 1 of {playing.episodes}</p>
+            <p className="font-bold text-sm text-foreground font-serif">{playing.ep1}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{playing.title} · Episode 1 of {playing.episodes} · {elapsed}s elapsed</p>
           </div>
           <button onClick={() => setPlaying(null)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors">
-            <X size={13} /> Exit
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity">
+            <X size={13} /> Exit Player
           </button>
         </div>
       </div>
@@ -727,80 +847,98 @@ function LearnTab() {
   }
 
   return (
-    <div className="bg-[#0a0a0c] min-h-full text-white">
-      {/* Featured hero */}
-      <div className={`relative bg-gradient-to-b ${featured.gradient} to-[#0a0a0c] p-8 pb-16`}>
-        <div className="max-w-lg">
-          <span className="text-xs font-bold px-3 py-1 bg-white/20 rounded-full backdrop-blur-sm">Featured Course</span>
-          <h2 className="text-3xl font-black font-serif mt-3">{featured.title}</h2>
-          <p className="text-white/70 mt-2 text-sm leading-relaxed max-w-md">{featured.desc}</p>
-          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            onClick={() => setPlaying(featured)}
-            className="mt-5 flex items-center gap-2 bg-white text-black font-bold px-5 py-3 rounded-xl text-sm hover:opacity-95 transition-opacity">
-            <Play size={16} className="ml-0.5" /> Play Episode 1
-          </motion.button>
+    <div className="bg-[#0c0d12] min-h-full text-white pb-12">
+      {/* Featured hero (Netflix SpotLight) */}
+      <div className="relative overflow-hidden aspect-[21/9] sm:aspect-[2.39/1] min-h-[300px] flex items-center p-8 sm:p-12">
+        {/* Cinematic Backdrop Gradient */}
+        <div className={`absolute inset-0 bg-gradient-to-br ${featured.gradient} opacity-20 blur-2xl scale-110`} />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0c0d12] via-[#0c0d12]/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0c0d12] via-[#0c0d12]/30 to-transparent" />
+
+        <div className="relative max-w-xl space-y-4 z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 bg-primary text-primary-foreground rounded-full">POPULAR</span>
+            <span className="text-xs text-primary font-bold">{featured.category}</span>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-black font-serif text-white leading-tight drop-shadow-md">{featured.title}</h2>
+          <p className="text-white/60 text-xs sm:text-sm leading-relaxed line-clamp-3 max-w-md">{featured.desc}</p>
+          <div className="flex items-center gap-3 pt-2">
+            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+              onClick={() => setPlaying(featured)}
+              className="flex items-center gap-2 bg-white text-black font-black px-6 py-3.5 rounded-xl text-xs hover:bg-white/90 transition-colors cursor-pointer shadow-lg shadow-black/20">
+              <Play size={14} className="fill-black" /> PLAY NOW
+            </motion.button>
+            <span className="text-xs text-white/40 font-semibold">{featured.episodes} Episodes · {featured.duration}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Netflix Categories Slider */}
+      <div className="px-6 sm:px-8 -mt-4 mb-6">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/5" style={{ scrollbarWidth: "none" }}>
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
+                activeCategory === cat
+                  ? "bg-primary border-primary text-primary-foreground"
+                  : "bg-white/5 border-white/10 text-white/60 hover:text-white hover:border-white/20"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Rows */}
-      <div className="px-6 pb-10 -mt-8 space-y-8">
+      <div className="px-6 sm:px-8 space-y-8 relative z-10">
         {rows.map(row => (
-          <div key={row.label}>
-            <h3 className="text-white font-bold mb-3 text-sm">{row.label}</h3>
-            <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+          <div key={row.label} className="space-y-3">
+            <h3 className="text-white font-black text-sm tracking-wider uppercase font-serif">{row.label}</h3>
+            <div className="flex gap-4 overflow-x-auto pb-4 pt-1" style={{ scrollbarWidth: "none" }}>
               {row.courses.map(course => (
-                <motion.button key={course.id} whileHover={{ scale: 1.05, y: -4 }} whileTap={{ scale: 0.96 }}
+                <motion.button key={course.id} whileHover={{ scale: 1.05, y: -4 }} whileTap={{ scale: 0.98 }}
                   onClick={() => setPlaying(course)}
-                  className="flex-shrink-0 w-40 rounded-2xl overflow-hidden cursor-pointer group shadow-lg shadow-black/40">
+                  className="flex-shrink-0 w-48 rounded-2xl overflow-hidden cursor-pointer group shadow-xl bg-[#141620] border border-white/5 text-left transition-all">
 
                   {/* Thumbnail */}
-                  <div className={`relative bg-gradient-to-br ${course.gradient} aspect-[3/4] flex flex-col items-center justify-center overflow-hidden`}>
-                    {/* Decorative blobs */}
-                    <div className="absolute top-0 right-0 w-20 h-20 rounded-full bg-white/10 -translate-y-1/2 translate-x-1/2" />
-                    <div className="absolute bottom-0 left-0 w-16 h-16 rounded-full bg-black/20 translate-y-1/2 -translate-x-1/2" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full bg-white/5 blur-xl" />
+                  <div className={`relative bg-gradient-to-br ${course.gradient} aspect-[16/10] flex flex-col items-center justify-center overflow-hidden`}>
+                    <div className="absolute inset-0 bg-black/10" />
 
                     {/* Emoji big */}
                     <motion.div
-                      animate={{ y: [0, -4, 0] }}
-                      transition={{ duration: 3, repeat: Infinity, delay: course.id * 0.3 }}
-                      className="text-5xl drop-shadow-lg z-10 select-none">
+                      animate={{ y: [0, -3, 0] }}
+                      transition={{ duration: 3, repeat: Infinity, delay: course.id * 0.2 }}
+                      className="text-4xl drop-shadow-xl z-10 select-none">
                       {course.emoji}
                     </motion.div>
 
                     {/* Badges */}
-                    <div className="absolute top-2 left-2 flex gap-1">
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-black/40 text-white rounded-full backdrop-blur-sm">{course.category}</span>
-                      {course.new && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-400 text-black rounded-full">NEW</span>
-                      )}
+                    <div className="absolute top-2 left-2 flex gap-1 z-10">
+                      <span className="text-[8px] font-black px-1.5 py-0.5 bg-black/60 text-white rounded-md backdrop-blur-sm uppercase tracking-wider">{course.category}</span>
                     </div>
 
-                    {/* Match score */}
-                    <div className="absolute top-2 right-2">
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 bg-green-500/80 text-white rounded-full backdrop-blur-sm">{course.matchScore}% match</span>
+                    {/* Play icon overlay */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200">
+                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                        <Play size={14} className="text-black ml-0.5 fill-black" />
+                      </div>
                     </div>
-
-                    {/* Play overlay on hover */}
-                    <motion.div initial={{ opacity: 0 }} whileHover={{ opacity: 1 }}
-                      className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                      <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-xl">
-                        <Play size={18} className="text-black ml-0.5" />
-                      </div>
-                    </motion.div>
-
-                    {/* Progress bar (fake) if first course */}
-                    {course.id === 1 && (
-                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30">
-                        <div className="h-full bg-amber-400 w-[18%]" />
-                      </div>
-                    )}
                   </div>
 
                   {/* Info strip */}
-                  <div className="bg-[#181820] px-2.5 py-2">
-                    <p className="text-white text-[11px] font-bold leading-tight line-clamp-2">{course.title}</p>
-                    <p className="text-white/40 text-[10px] mt-0.5">{course.episodes} ep · {course.duration}</p>
+                  <div className="p-3.5 space-y-1">
+                    <p className="text-white text-xs font-black leading-tight line-clamp-1 group-hover:text-primary transition-colors">{course.title}</p>
+                    <div className="flex items-center justify-between text-[9px] text-white/50">
+                      <span>{course.episodes} Episodes</span>
+                      <span className="text-primary font-bold">{course.matchScore}% Match</span>
+                    </div>
+                    {/* Fake progress bar */}
+                    <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-2">
+                      <div className="h-full bg-primary" style={{ width: course.id === 1 ? "35%" : course.id === 2 ? "12%" : "0%" }} />
+                    </div>
                   </div>
                 </motion.button>
               ))}
@@ -812,8 +950,910 @@ function LearnTab() {
   );
 }
 
-function SkipBackIcon() { return <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>; }
-function SkipFwdIcon() { return <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>; }
+// ─── VIBE CHECK & HUMOR ANALYZER TAB ─────────────────────────────────────────
+interface ScanTabProps {
+  setTab: (t: string) => void;
+  setPlayingCourse: (c: typeof COURSES[0] | null) => void;
+}
+
+function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
+  const { companion } = useStore();
+  const [activeSubTab, setActiveSubTab] = useState<"vibe" | "humor">("vibe");
+  
+  // Camera & scan state
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStepText, setScanStepText] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  
+  // Vibe Result state
+  const [detectedEmotion, setDetectedEmotion] = useState<"Stressed" | "Joyful" | "Focused" | "Exhausted" | null>(null);
+  const [expressionDialogue, setExpressionDialogue] = useState("");
+  const [vibeScanCount, setVibeScanCount] = useState(0);
+  
+  // Humor Quiz state
+  const [quizQuestionIdx, setQuizQuestionIdx] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState<string[]>([]);
+  const [quizCompleted, setQuizCompleted] = useState(false);
+
+  // Humor Result state
+  const [humorArchetype, setHumorArchetype] = useState("");
+  const [humorScores, setHumorScores] = useState<{ witty: number; dry: number; relatable: number } | null>(null);
+  const [isGeneratingJoke, setIsGeneratingJoke] = useState(false);
+  const [jokeStreamedText, setJokeStreamedText] = useState("");
+  const [selectedMedia, setSelectedMedia] = useState<any>(null);
+
+  const humorQuestions = [
+    {
+      text: "Professor is delivering a super boring lecture. What is your go-to move?",
+      options: [
+        { label: "Make aggressive eye contact with my best friend to suppress a laugh.", value: "witty" },
+        { label: "Quietly accept my fate and sleep on the last bench.", value: "deadpan" },
+        { label: "Whisper a terrible subject-related pun to anyone nearby.", value: "dry" }
+      ]
+    },
+    {
+      text: "The hostel mess serves paneer that is practically rubber. Your reaction?",
+      options: [
+        { label: "Post a review: '5-star rubber manufacturing unit, highly recommended!'", value: "witty" },
+        { label: "Eat it in absolute silence, dead inside, counting days to semester end.", value: "deadpan" },
+        { label: "Joke that the paneer is trying to 'stretch' our dental capacity.", value: "dry" }
+      ]
+    },
+    {
+      text: "You have a major semester test tomorrow and know absolutely nothing. How do you cope?",
+      options: [
+        { label: "Calculate my backup career plans as a professional tea vendor.", value: "witty" },
+        { label: "Shrug, close the book, and start playing valorant/BGMI.", value: "deadpan" },
+        { label: "Say 'Kal se pakka padhunga' out loud for the 100th time today.", value: "dry" }
+      ]
+    },
+    {
+      text: "Your crush replies with just a 'K'. What's your immediate brain response?",
+      options: [
+        { label: "Draft a text to potassium, thanking them for the scientific chemistry.", value: "witty" },
+        { label: "Assume my entire lineage has been rejected, close the chat forever.", value: "deadpan" },
+        { label: "Reply with 'L-M-N-O-P' to teach them the alphabet.", value: "dry" }
+      ]
+    },
+    {
+      text: "Your group project partner hasn't contributed a single slide. What do you do?",
+      options: [
+        { label: "Put their name under the 'Special thanks to moral support' section.", value: "witty" },
+        { label: "Do the entire slide deck alone, crying in my pillow later.", value: "deadpan" },
+        { label: "Joke that they are the 'hidden variable' of the project.", value: "dry" }
+      ]
+    },
+    {
+      text: "You are caught by the warden bringing an electric kettle inside your hostel room. What's your excuse?",
+      options: [
+        { label: "Sir, this is a scientific steam inhaler for my chronic congestion.", value: "witty" },
+        { label: "Accept the fine, unplug it, and ask if they want some Maggi.", value: "deadpan" },
+        { label: "It's just water, sir. Water isn't illegal yet.", value: "dry" }
+      ]
+    },
+    {
+      text: "Your phone battery is at 1% and you are in the middle of a gossipy call. What do you do?",
+      options: [
+        { label: "Give a fast dramatic summary: 'If I don't survive, tell mom I loved the tea!'", value: "witty" },
+        { label: "Let it die. It was getting boring anyway.", value: "deadpan" },
+        { label: "Say '1% left. We are down to the molecular level now.'", value: "dry" }
+      ]
+    },
+    {
+      text: "You accidentally wave back at someone who was actually waving at the person behind you. How do you recover?",
+      options: [
+        { label: "Pretend I was stretching my hand to check the wind direction.", value: "witty" },
+        { label: "Keep my hand raised, walk past them, and wave at the sky.", value: "deadpan" },
+        { label: "Wink at them to make it 10x more awkward.", value: "dry" }
+      ]
+    },
+    {
+      text: "The professor asks a question and looks directly at you. You have no clue. Your tactic?",
+      options: [
+        { label: "Nod sagely, stroke my chin, and say 'That depends on the perspective, sir.'", value: "witty" },
+        { label: "Look behind me to check who they are actually pointing at.", value: "deadpan" },
+        { label: "Cough violently to trigger a health-related exit.", value: "dry" }
+      ]
+    },
+    {
+      text: "You wake up at 7:58 AM for an 8:00 AM presentation. What's the plan?",
+      options: [
+        { label: "Run in pyjamas, call it 'A realistic presentation on student stress simulation.'", value: "witty" },
+        { label: "Go back to sleep. There is always the next semester.", value: "deadpan" },
+        { label: "Join online on my phone, put a static picture of me nodding.", value: "dry" }
+      ]
+    }
+  ];
+
+  const handleAnswer = (value: string) => {
+    const nextAnswers = [...quizAnswers, value];
+    setQuizAnswers(nextAnswers);
+    if (quizQuestionIdx < humorQuestions.length - 1) {
+      setQuizQuestionIdx(prev => prev + 1);
+    } else {
+      setQuizCompleted(true);
+    }
+  };
+
+  const handleResetQuiz = () => {
+    setQuizQuestionIdx(0);
+    setQuizAnswers([]);
+    setQuizCompleted(false);
+    setHumorArchetype("");
+    setHumorScores(null);
+    setJokeStreamedText("");
+    setSelectedMedia(null);
+  };
+  
+  const startCamera = async () => {
+    setCameraError(false);
+    setCameraActive(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch (err) {
+      console.error("Camera access error:", err);
+      setCameraError(true);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  };
+
+  useEffect(() => {
+    startCamera();
+    return () => stopCamera();
+  }, []);
+
+  // Handle Scanning for Vibe
+  const handleVibeScan = () => {
+    if (scanning) return;
+    setScanning(true);
+    setScanProgress(0);
+    setDetectedEmotion(null);
+    setExpressionDialogue("");
+    
+    const steps = [
+      "Initializing camera feed...",
+      "Detecting facial outlines...",
+      "Mapping 68 facial landmark coordinates...",
+      "Analyzing micro-expressions...",
+      "Mapping mood metrics to Asha's empathy core..."
+    ];
+    
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      setScanProgress(prev => {
+        const next = prev + 5;
+        if (next >= 100) {
+          clearInterval(interval);
+          finishVibeScan();
+          return 100;
+        }
+        // Update helper text at intervals
+        const stepIdx = Math.floor((next / 100) * steps.length);
+        if (stepIdx !== currentStep && stepIdx < steps.length) {
+          currentStep = stepIdx;
+          setScanStepText(steps[stepIdx]);
+        }
+        return next;
+      });
+    }, 150);
+    setScanStepText(steps[0]);
+  };
+
+  const finishVibeScan = () => {
+    setScanning(false);
+    setVibeScanCount(prev => prev + 1);
+    
+    // Choose emotion based on index or randomness
+    const emotions: Array<"Stressed" | "Joyful" | "Focused" | "Exhausted"> = ["Stressed", "Joyful", "Focused", "Exhausted"];
+    const chosen = emotions[Math.floor(Math.random() * emotions.length)];
+    setDetectedEmotion(chosen);
+    
+    const cName = companion?.name || "Asha";
+    let text = "";
+    if (chosen === "Stressed") {
+      text = `Aap thode stressed lag rahe ho, your brow is slightly tense. 😟 Par chinta mat karo! Take a deep breath with me right now. Let's practice some grounding tools together to calm down. Breathe in, breathe out... 🌬️`;
+    } else if (chosen === "Joyful") {
+      text = `Waah! Kya kamaal ki smile hai teri! Mujhko toh dekhte hi positive vibes aa gayi! 😄 Nazar na lage! Keep smiling like this, okay? Let's fuel this positive energy! ✨`;
+    } else if (chosen === "Focused") {
+      text = `Oho! Full concentration mode! Eyes steady aur dimaag bilkul razor sharp lag raha hai! 🎯 You are doing great. Keep up this flow, focus tootne mat dena! 🚀`;
+    } else {
+      text = `Aankhein thodi heavy aur tired lag rahi hain. Lagta hai raat bhar scroll kiya ya assignment likha? 😴 Break banta hai boss. Ek coffee break lo aur thodi der screen se door raho. ☕`;
+    }
+    setExpressionDialogue(text);
+  };
+
+  // Recommendations mapping based on vibe
+  const getVibeRecommendations = (emotion: string) => {
+    if (emotion === "Stressed") {
+      return COURSES.filter(c => ["Anxiety", "Grounding"].includes(c.category)).slice(0, 2);
+    } else if (emotion === "Joyful") {
+      return COURSES.filter(c => ["Wellness", "Focus"].includes(c.category)).slice(0, 2);
+    } else if (emotion === "Focused") {
+      return COURSES.filter(c => ["Focus", "ADHD"].includes(c.category)).slice(0, 2);
+    } else {
+      return COURSES.filter(c => ["Wellness", "Grounding", "Breathing"].includes(c.category)).slice(0, 2);
+    }
+  };
+
+  // Handle Scanning for Humor
+  const handleHumorScan = () => {
+    if (scanning || !quizCompleted) return;
+    setScanning(true);
+    setScanProgress(0);
+    setHumorArchetype("");
+    setHumorScores(null);
+    
+    const steps = [
+      "Initializing camera feedback...",
+      "Analyzing goofy parameters...",
+      "Measuring eye-squint humor index...",
+      "Calculating smile-curve sarcasm factor...",
+      "Calibrating results against quiz profiles..."
+    ];
+    
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      setScanProgress(prev => {
+        const next = prev + 5;
+        if (next >= 100) {
+          clearInterval(interval);
+          finishHumorScan();
+          return 100;
+        }
+        const stepIdx = Math.floor((next / 100) * steps.length);
+        if (stepIdx !== currentStep && stepIdx < steps.length) {
+          currentStep = stepIdx;
+          setScanStepText(steps[stepIdx]);
+        }
+        return next;
+      });
+    }, 150);
+    setScanStepText(steps[0]);
+  };
+
+  const finishHumorScan = () => {
+    setScanning(false);
+    
+    // Count user's preferences from quiz
+    const counts = quizAnswers.reduce((acc, val) => {
+      acc[val] = (acc[val] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const wittyCount = counts["witty"] || 0;
+    const deadpanCount = counts["deadpan"] || 0;
+    const dryCount = counts["dry"] || 0;
+
+    let arch = "Deadpan Relatable Cynic";
+    if (wittyCount >= deadpanCount && wittyCount >= dryCount) {
+      arch = "Sarcastic Hostel Philosopher";
+    } else if (dryCount >= wittyCount && dryCount >= deadpanCount) {
+      arch = "Dad Jokes Specialist";
+    }
+
+    setHumorArchetype(arch);
+
+    // Compute scores based on selection counts
+    const wittyBase = 45 + wittyCount * 12 + Math.floor(Math.random() * 8);
+    const dryBase = 40 + dryCount * 14 + Math.floor(Math.random() * 8);
+    const relatableBase = 50 + deadpanCount * 10 + Math.floor(Math.random() * 8);
+
+    setHumorScores({
+      witty: Math.min(wittyBase, 100),
+      dry: Math.min(dryBase, 100),
+      relatable: Math.min(relatableBase, 100)
+    });
+  };
+
+  // Real-time joke generator with streaming letters matching the archetype
+  const generateJoke = () => {
+    if (isGeneratingJoke) return;
+    setIsGeneratingJoke(true);
+    setJokeStreamedText("");
+    
+    let jokes = [
+      "Engineering student ka dimaag aur hostel ka geyser... dono tabhi kaam karte hain jab deadline sar par ho! 😂",
+      "GPA is temporary, but 'Kal se pakka padhunga' is permanent! 📈",
+      "Life of a college student: 8:00 AM class, 7:59 AM alarm, 8:45 AM breakfast in hostel room, 10:00 AM sleep again."
+    ];
+
+    if (humorArchetype === "Sarcastic Hostel Philosopher") {
+      jokes = [
+        "Engineering student ka dimaag aur hostel ka geyser... dono tabhi kaam karte hain jab deadline sar par ho! 😂",
+        "Wi-Fi chalta hai toh assignment nahi hota, aur jab assignment likhna ho toh Wi-Fi 'No Internet Access' dikhata hai! 💻",
+        "Prof: 'Please don't discuss in class.' Me and my friend: *Using high-level telepathy and aggressive eye contact to mock the lecture* 👀"
+      ];
+    } else if (humorArchetype === "Dad Jokes Specialist") {
+      jokes = [
+        "Hostel mess mein paneer ki sabji dhoondna... is like code mein semi-colon dhoondna. Milta hi nahi! 🍛",
+        "GPA is temporary, but 'Kal se pakka padhunga' is permanent! 📈",
+        "Mess cook: 'Paneer kaisa laga?' Student: 'Bahut paneer-dar tha, isme paneer dhoondne mein darta raha.' 😅"
+      ];
+    } else if (humorArchetype === "Deadpan Relatable Cynic") {
+      jokes = [
+        "Beta, agar semester exams ke pehle neend aa rahi hai, toh samajh lo tumhara syllabus se koi lena-dena nahi hai! 😴",
+        "VIVA Examiner: 'Tell me something about yourself.' Me: 'Sir, please ask syllabus questions, personal life is even more blank.' 😭",
+        "Life of a college student: 8:00 AM class, 7:59 AM alarm, 8:45 AM breakfast in hostel room, 10:00 AM sleep again."
+      ];
+    }
+    
+    const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+    const cName = companion?.name || "Asha";
+    const prefix = `${cName} says: "`;
+    const fullJoke = `${prefix}${randomJoke}"`;
+    
+    let currentIdx = 0;
+    const typingTimer = setInterval(() => {
+      setJokeStreamedText(prev => prev + fullJoke[currentIdx]);
+      currentIdx++;
+      if (currentIdx >= fullJoke.length) {
+        clearInterval(typingTimer);
+        setIsGeneratingJoke(false);
+      }
+    }, 30);
+  };
+
+  const handlePlayCourse = (course: typeof COURSES[0]) => {
+    setPlayingCourse(course);
+    setTab("learn");
+  };
+
+  // Recommended courses based on Humor Archetype
+  const getHumorRecommendations = (arch: string) => {
+    if (arch === "Sarcastic Hostel Philosopher") {
+      return COURSES.filter(c => ["ADHD", "Focus", "Wellness"].includes(c.category)).slice(0, 2);
+    } else if (arch === "Dad Jokes Specialist") {
+      return COURSES.filter(c => ["Focus", "Wellness", "Breathing"].includes(c.category)).slice(0, 2);
+    } else { // Deadpan Relatable Cynic
+      return COURSES.filter(c => ["Anxiety", "Grounding", "Wellness"].includes(c.category)).slice(0, 2);
+    }
+  };
+
+  // College memes filtered by archetype
+  const getCollegeMemes = (arch: string) => {
+    if (arch === "Sarcastic Hostel Philosopher") {
+      return [
+        { title: "Attendance Issues", text: "Me calculate kar raha hoon ki kitne aur lectures bunk karne par attendance exact 75.01% bachegi. 🧮" },
+        { title: "Sleepless Nights", text: "When you study for 5 minutes and reward yourself with a 2-hour scroll session." }
+      ];
+    } else if (arch === "Dad Jokes Specialist") {
+      return [
+        { title: "Hostel Life", text: "Kal raat 2 baje 10 logon ne mil kar 2 Maggi packets banayi. Life's peak chef moment. 🍜" },
+        { title: "Mess Food", text: "Hostel mess food has two states: 1. Garam & Bekaar. 2. Thanda & Bekaar." }
+      ];
+    } else { // Deadpan Relatable Cynic
+      return [
+        { title: "Exam Prep", text: "Group study matlab 5% padhai, 45% backchodi aur 50% calculating minimum pass marks. 📚" },
+        { title: "Lecture Logic", text: "Prof: 'Please don't discuss in class.' Me and my friend: *Using high-level telepathy and aggressive eye contact to mock the lecture* 👀" }
+      ];
+    }
+  };
+
+  const getHumorMedia = (arch: string) => {
+    if (arch === "Sarcastic Hostel Philosopher") {
+      return [
+        { type: "reddit", title: "r/engineeringmemes - compilations", sub: "14.2k upvotes", desc: "Compilation of professor lecturing vs students playing high-stakes Chrome Dino. Click to play edit.", icon: "🎥" },
+        { type: "picture", title: "Placement Cell vs Reality", sub: "Meme Picture", desc: "Expectation: 25 LPA package. Reality: 2.5 LPA package but free biscuits in canteen.", icon: "🖼️" },
+        { type: "video", title: "Hostel Warden Anger Compilation", sub: "Vibe Edit", desc: "A cinematic TikTok edit of warden shouting about electric kettles with heavy bass music in background.", icon: "⚡" }
+      ];
+    } else if (arch === "Dad Jokes Specialist") {
+      return [
+        { type: "reddit", title: "r/dadjokes - college edition", sub: "8.5k upvotes", desc: "Why did the textbook go to the doctor? Because it lost its table of contents! (Self-Destruct in 3s)", icon: "🎥" },
+        { type: "picture", title: "Semi-Colon Hunt", sub: "Meme Picture", desc: "A pictures of a programmer crying in front of 1000 lines of code, caption says: 'I found 99 problems but a semi-colon resolved them all.'", icon: "🖼️" },
+        { type: "video", title: "Lofi Puns To Fail Exams To", sub: "Reddit Edit", desc: "A compilation of terrible puns read in a relaxing lofi background voice.", icon: "🎵" }
+      ];
+    } else { // Deadpan Relatable Cynic
+      return [
+        { type: "reddit", title: "r/me_irl - semester end", sub: "22k upvotes", desc: "Reddit compilation: My GPA is declining faster than my interest in this degree. Relatable cynicism edits.", icon: "🎥" },
+        { type: "picture", title: "Sleep Schedule Graph", sub: "Meme Picture", desc: "X-axis: exam week. Y-axis: hours of sleep. Graph line goes straight through the basement.", icon: "🖼️" },
+        { type: "video", title: "5 Minutes of Silence for My GPA", sub: "Video Edit", desc: "A mock video compilation showing students looking into space blankly during exams.", icon: "🎬" }
+      ];
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6 text-foreground">
+      {/* Tab Switcher */}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div>
+          <h2 className="text-2xl font-black font-serif flex items-center gap-2">
+            <Camera className="text-primary" /> Vibe Check
+          </h2>
+          <p className="text-xs text-muted-foreground font-sans">Scan your face to check your mood or humor quotient.</p>
+        </div>
+        <div className="flex bg-muted rounded-xl p-1 border border-border">
+          <button
+            onClick={() => { setActiveSubTab("vibe"); stopCamera(); startCamera(); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeSubTab === "vibe" ? "bg-background shadow text-primary" : "text-muted-foreground"}`}
+          >
+            Mood Scan
+          </button>
+          <button
+            onClick={() => { setActiveSubTab("humor"); stopCamera(); startCamera(); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeSubTab === "humor" ? "bg-background shadow text-primary" : "text-muted-foreground"}`}
+          >
+            Humor Analyzer
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left Column: Camera Viewport */}
+        <div className="flex flex-col space-y-4">
+          <div className="relative aspect-video bg-black rounded-3xl border border-primary/20 overflow-hidden shadow-2xl group flex items-center justify-center">
+            {cameraActive && !cameraError ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover scale-x-[-1]"
+              />
+            ) : (
+              <div className="text-center p-6 space-y-3">
+                <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse">
+                  <Camera size={28} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {cameraError ? "Camera access denied or unavailable. Using simulated avatar feed." : "Accessing camera..."}
+                </p>
+                {cameraError && (
+                  <button onClick={startCamera} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg font-semibold hover:opacity-90 cursor-pointer">
+                    Retry Permission
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Target Brackets Bounding Box */}
+            <div className="absolute inset-8 border-2 border-dashed border-white/20 rounded-2xl pointer-events-none flex items-center justify-center">
+              <span className="text-[10px] text-white/40 uppercase tracking-widest absolute top-2 font-mono">Face Target</span>
+              {/* Corner brackets */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary" />
+            </div>
+
+            {/* Green Laser Sweep Line */}
+            {scanning && (
+              <motion.div
+                initial={{ top: "0%" }}
+                animate={{ top: ["0%", "100%", "0%"] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute left-0 right-0 h-0.5 bg-green-400 shadow-[0_0_15px_#4ade80] z-20 pointer-events-none"
+              />
+            )}
+
+            {/* Scanning Overlay State */}
+            {scanning && (
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center space-y-2 text-white">
+                <Loader2 className="animate-spin text-green-400" size={32} />
+                <p className="text-sm font-semibold tracking-wide drop-shadow font-sans">{scanStepText}</p>
+                <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-400 animate-pulse" style={{ width: `${scanProgress}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            {activeSubTab === "vibe" ? (
+              <button
+                onClick={handleVibeScan}
+                disabled={scanning}
+                className="flex-1 py-3 bg-primary text-primary-foreground rounded-2xl font-bold hover:opacity-95 transition-opacity shadow-lg shadow-primary/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider font-sans"
+              >
+                {scanning ? "Scanning Vibe..." : "Scan My Vibe"}
+              </button>
+            ) : (
+              <button
+                onClick={handleHumorScan}
+                disabled={scanning || !quizCompleted}
+                className="flex-1 py-3 bg-primary text-primary-foreground rounded-2xl font-bold hover:opacity-95 transition-opacity shadow-lg shadow-primary/20 disabled:opacity-50 cursor-pointer text-xs uppercase tracking-wider font-sans"
+              >
+                {scanning ? "Analyzing Humor..." : !quizCompleted ? "Answer Quiz First" : "Analyze My Humor"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Dynamic Results & Quiz Questionnaire */}
+        <div className="flex flex-col">
+          {activeSubTab === "vibe" ? (
+            <div className="flex-1 bg-card border border-border rounded-3xl p-5 flex flex-col justify-between min-h-[300px]">
+              {detectedEmotion ? (
+                <div className="space-y-4 flex-1">
+                  {/* Emotion badge */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-widest bg-primary/10 text-primary px-3 py-1 rounded-full uppercase font-mono">
+                      Detected Vibe: {detectedEmotion}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-sans">Scan #{vibeScanCount}</span>
+                  </div>
+
+                  {/* Empathy dialogue container */}
+                  <div className="flex gap-3 bg-muted/40 border border-border/60 rounded-2xl p-4">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <AnimeAvatar size={40} style={companion?.appearance as any || "soft-pastel"} gender={companion?.gender || "female"} />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-xs font-bold text-primary font-serif">{companion?.name || "Asha"}</p>
+                      <p className="text-xs leading-normal text-foreground/90 font-sans">{expressionDialogue}</p>
+                    </div>
+                  </div>
+
+                  {/* Recommendations */}
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-serif">Recommended for your mood:</h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      {getVibeRecommendations(detectedEmotion).map(course => (
+                        <button
+                          key={course.id}
+                          onClick={() => handlePlayCourse(course)}
+                          className="flex items-center gap-3 p-2.5 rounded-xl border border-border hover:border-primary/30 bg-muted/20 hover:bg-primary/5 transition-all text-left group cursor-pointer"
+                        >
+                          <span className="text-2xl">{course.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-foreground truncate group-hover:text-primary transition-colors font-serif">{course.title}</p>
+                            <p className="text-[10px] text-muted-foreground truncate font-sans">{course.desc}</p>
+                          </div>
+                          <ChevronRight size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-2">
+                  <div className="text-4xl">🧘</div>
+                  <h3 className="font-bold text-foreground font-serif">Aap Kaisa Feel Kar Rahe Ho?</h3>
+                  <p className="text-xs text-muted-foreground max-w-xs leading-normal font-sans">
+                    Click the scan button to let Asha capture your micro-expressions and recommend tailored wellness exercises.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Humor subtab */
+            <div className="flex-1 flex flex-col min-h-[300px]">
+              {!quizCompleted ? (
+                /* Interactive Questionnaire */
+                <div className="flex-1 bg-card border border-border rounded-3xl p-5 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold tracking-widest bg-primary/10 text-primary px-3 py-1 rounded-full uppercase font-mono">
+                        Humor Quiz: Question {quizQuestionIdx + 1}/{humorQuestions.length}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{quizQuestionIdx + 1} of {humorQuestions.length}</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-foreground font-serif leading-snug">
+                      {humorQuestions[quizQuestionIdx].text}
+                    </h3>
+                    <div className="flex flex-col gap-2 pt-2">
+                      {humorQuestions[quizQuestionIdx].options.map((opt, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleAnswer(opt.value)}
+                          className="w-full text-left p-3 rounded-xl border border-border hover:border-primary/40 bg-muted/10 hover:bg-primary/5 transition-all text-xs font-sans text-foreground/80 hover:text-foreground cursor-pointer"
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground text-center pt-2">
+                    Answer these questions to calibrate Asha's humor analysis parameters!
+                  </div>
+                </div>
+              ) : (
+                /* Quiz Completed: Show scan prompt or result */
+                <div className="flex-1 bg-card border border-border rounded-3xl p-5 flex flex-col justify-between">
+                  {humorArchetype ? (
+                    <div className="space-y-4 flex-1">
+                      {/* Archetype display */}
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] font-bold tracking-widest bg-primary/10 text-primary px-2.5 py-0.5 rounded-full uppercase font-mono">
+                            Humor Archetype
+                          </span>
+                          <h3 className="text-base font-black text-foreground font-serif">{humorArchetype}</h3>
+                        </div>
+                        <button
+                          onClick={handleResetQuiz}
+                          className="text-[9px] text-primary hover:underline font-bold cursor-pointer"
+                        >
+                          Reset Quiz
+                        </button>
+                      </div>
+
+                      {/* Scorecard */}
+                      {humorScores && (
+                        <div className="grid grid-cols-3 gap-2 bg-muted/30 border border-border/50 p-2.5 rounded-2xl text-center">
+                          <div>
+                            <p className="text-[8px] text-muted-foreground uppercase font-black font-sans">Witty & Sharp</p>
+                            <p className="text-sm font-black text-primary mt-0.5 font-mono">{humorScores.witty}%</p>
+                          </div>
+                          <div>
+                            <p className="text-[8px] text-muted-foreground uppercase font-black font-sans">Dry Puns</p>
+                            <p className="text-sm font-black text-primary mt-0.5 font-mono">{humorScores.dry}%</p>
+                          </div>
+                          <div>
+                            <p className="text-[8px] text-muted-foreground uppercase font-black font-sans">Relatability</p>
+                            <p className="text-sm font-black text-primary mt-0.5 font-mono">{humorScores.relatable}%</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Real-time Joke Generator */}
+                      <div className="bg-[#141620] border border-white/5 rounded-2xl p-4 space-y-3 text-white">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-primary font-serif">Real-Time Jokes</h4>
+                          <button
+                            onClick={generateJoke}
+                            disabled={isGeneratingJoke}
+                            className="text-[10px] px-2.5 py-1 bg-primary text-primary-foreground rounded-lg font-bold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer font-sans"
+                          >
+                            {isGeneratingJoke ? "Generating..." : "Generate Joke"}
+                          </button>
+                        </div>
+                        <div className="min-h-[60px] bg-black/30 border border-white/5 rounded-xl p-3 flex items-center justify-center">
+                          {jokeStreamedText ? (
+                            <p className="text-xs leading-normal font-medium text-white/90 italic font-sans">{jokeStreamedText}</p>
+                          ) : (
+                            <p className="text-xs text-white/45 text-center font-sans">Click "Generate Joke" to generate a Hinglish joke streaming in real-time!</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Recommendations based on Humor */}
+                      <div className="space-y-3">
+                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-serif">Recommended for your style:</h4>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {getHumorRecommendations(humorArchetype).map(course => (
+                            <button
+                              key={course.id}
+                              onClick={() => handlePlayCourse(course)}
+                              className="flex items-center gap-3 p-2 rounded-xl border border-border hover:border-primary/30 bg-muted/20 hover:bg-primary/5 transition-all text-left group cursor-pointer"
+                            >
+                              <span className="text-xl">{course.emoji}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-foreground truncate group-hover:text-primary transition-colors font-serif">{course.title}</p>
+                              </div>
+                              <ChevronRight size={13} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Humor Edits, Meme Videos & Reddit Gallery */}
+                      <div className="space-y-3">
+                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-serif">Meme Edits & Reddit compilations:</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          {getHumorMedia(humorArchetype).map((item, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setSelectedMedia(item)}
+                              className="p-3 rounded-xl border border-border hover:border-primary/45 bg-muted/15 hover:bg-primary/5 transition-all text-left flex flex-col justify-between h-[96px] group cursor-pointer"
+                            >
+                              <div className="flex justify-between items-start w-full">
+                                <span className="text-base">{item.icon}</span>
+                                <span className="text-[8px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono uppercase">{item.type}</span>
+                              </div>
+                              <div className="min-w-0 mt-2">
+                                <p className="text-[10px] font-bold text-foreground truncate group-hover:text-primary transition-colors font-serif">{item.title}</p>
+                                <p className="text-[8px] text-muted-foreground truncate">{item.sub}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Collage college jokes/memes */}
+                      <div className="space-y-2">
+                        <h4 className="text-[9px] font-black uppercase tracking-wider text-muted-foreground font-serif">Relatable College Musings</h4>
+                        <div className="grid grid-cols-1 gap-2 max-h-[120px] overflow-y-auto pr-1" style={{ scrollbarWidth: "none" }}>
+                          {getCollegeMemes(humorArchetype).map((meme, idx) => (
+                            <div key={idx} className="p-2.5 rounded-xl border border-border/60 bg-muted/10">
+                              <p className="text-[10px] font-bold text-primary font-serif">{meme.title}</p>
+                              <p className="text-[10px] text-foreground/80 mt-0.5 leading-normal font-sans">{meme.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Scan prompt */
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3">
+                      <div className="text-4xl animate-bounce">📸</div>
+                      <h3 className="font-bold text-foreground font-serif">Quiz Completed!</h3>
+                      <p className="text-xs text-muted-foreground max-w-xs leading-normal font-sans">
+                        Your answers are logged! Now, trigger the face scanner scan to calibrate your facial landmarks and finalize your humor scorecard!
+                      </p>
+                      <button
+                        onClick={handleResetQuiz}
+                        className="text-xs text-primary hover:underline font-bold cursor-pointer"
+                      >
+                        Reset & Start Over
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Selected Media Modal */}
+      <AnimatePresence>
+        {selectedMedia && (
+          <MediaModal
+            item={selectedMedia}
+            onClose={() => setSelectedMedia(null)}
+            companionName={companion?.name || "Asha"}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── MEDIA MODAL FOR MEMES & VIDEOS ──────────────────────────────────────────
+function MediaModal({ item, onClose, companionName }: { item: any; onClose: () => void; companionName: string }) {
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      setProgress(p => (p >= 100 ? 0 : p + 2));
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
+  const getCommentary = () => {
+    if (item.type === "reddit") {
+      return `${companionName}: "Bhai, reddit edits are next level! 😭 Itna accurate kaise ho sakta hai? Pure relatable stress content. Padhai ke alawa sab kuch top-tier hai humara!"`;
+    }
+    if (item.type === "picture") {
+      return `${companionName}: "Yeh meme dekh kar meri database crash hone wali thi! 😂 Placement biscuit se hi toh hostel chalta hai. Canteen wale bhaiya should be the chief placement officer!"`;
+    }
+    return `${companionName}: "Yeh video edit toh direct dil par laga! 💀 Warden sir/madam ke room se jo sound waves aate hain, they exceed all safety limits. Perfect bass drop!"`;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 font-sans"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-card border border-border rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{item.icon}</span>
+            <div>
+              <h3 className="font-bold text-foreground font-serif text-sm">{item.title}</h3>
+              <p className="text-[10px] text-muted-foreground uppercase font-mono">{item.type} Edit · {item.sub}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-muted flex items-center justify-center transition-colors">
+            <X size={16} className="text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Content Area */}
+        <div className="p-6 bg-black/40 flex-1 flex flex-col items-center justify-center min-h-[260px] relative">
+          {item.type === "picture" ? (
+            <div className="w-full max-w-sm bg-black border border-white/10 rounded-2xl overflow-hidden shadow-xl flex flex-col items-center p-4 space-y-4">
+              <div className="text-center font-bold text-sm text-white uppercase tracking-wider px-2 font-serif">
+                {item.title}
+              </div>
+              <div className="w-full aspect-[4/3] bg-gradient-to-tr from-purple-900/30 to-pink-900/30 rounded-xl border border-white/5 flex items-center justify-center relative overflow-hidden">
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-500 via-red-500 to-black animate-pulse" />
+                <span className="text-5xl animate-bounce">🎓🍪💼</span>
+              </div>
+              <div className="text-center text-xs text-white bg-red-600/25 border border-red-500/35 rounded-lg py-2 px-3 font-semibold w-full">
+                "{item.desc}"
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-sm bg-black border border-white/10 rounded-2xl overflow-hidden shadow-xl flex flex-col">
+              <div className="w-full aspect-video bg-gradient-to-br from-indigo-950/40 to-slate-950 rounded-t-xl flex flex-col items-center justify-center relative group overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center z-10">
+                  {isPlaying ? (
+                    <div className="flex flex-col items-center space-y-2">
+                      <span className="text-4xl animate-spin text-primary">💿</span>
+                      <span className="text-[10px] text-white/70 font-mono tracking-widest uppercase">Playing Edit...</span>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsPlaying(true)} className="w-12 h-12 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 flex items-center justify-center transition-colors">
+                      <Play size={20} className="text-white fill-white ml-0.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="absolute bottom-2 left-3 right-3 text-[10px] text-white/60 bg-black/60 backdrop-blur-sm rounded px-2 py-1 truncate z-10">
+                  {item.desc}
+                </div>
+                {isPlaying && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-transparent via-purple-500/5 to-transparent pointer-events-none animate-pulse" />
+                )}
+              </div>
+              <div className="p-3 bg-neutral-900 border-t border-white/5 space-y-2">
+                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden cursor-pointer" onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  setProgress(Math.floor((clickX / rect.width) * 100));
+                }}>
+                  <div className="h-full bg-primary" style={{ width: `${progress}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-white">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setIsPlaying(!isPlaying)} className="hover:text-primary transition-colors cursor-pointer">
+                      {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                    </button>
+                    <span className="text-[9px] font-mono text-white/50">0:{(Math.floor(progress / 10)).toString().padStart(2, '0')} / 0:10</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-white/50">
+                    <span className="text-[9px] uppercase tracking-widest font-mono">1080p HD</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Asha's Reaction Footer */}
+        <div className="p-5 border-t border-border bg-muted/20 space-y-4 flex-shrink-0">
+          <div className="flex gap-3 bg-muted/60 border border-border/40 p-3.5 rounded-2xl">
+            <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-black text-primary flex-shrink-0 mt-0.5">
+              🤖
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-bold text-primary font-serif">{companionName}</p>
+              <p className="text-xs leading-relaxed text-foreground/90 font-sans italic">{getCommentary()}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl font-bold hover:opacity-90 transition-opacity text-xs cursor-pointer text-center"
+          >
+            Achaa, close karo!
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 // ─── PSYCH MESSAGING MODAL ───────────────────────────────────────────────────
 type PsychMessage = { id: number; role: "user" | "psych"; text: string; time: string };
@@ -1524,6 +2564,29 @@ function SettingsTab() {
             <option value="medium">Medium</option>
             <option value="large">Large</option>
           </select>
+        </Row>
+        <Row label="Color Theme" sub="Change the application visual aura">
+          <div className="flex gap-2">
+            {[
+              { id: 'beige', name: 'Beige Forest', color: 'bg-[#FAF7F2] border-[#2D5A3D]' },
+              { id: 'dark', name: 'Midnight Dark', color: 'bg-[#141414] border-white/20' },
+              { id: 'cyberpunk', name: 'Cyberpunk Neon', color: 'bg-[#0a0014] border-[#ff0099]' },
+              { id: 'antigravity', name: 'Antigravity Space', color: 'bg-[#080310] border-[#b366ff]' },
+              { id: 'sakura', name: 'Sakura Blossom', color: 'bg-[#fdf7f9] border-[#ff80bf]' },
+              { id: 'retro', name: 'Retro Vaporwave', color: 'bg-[#050510] border-[#ff007f]' },
+            ].map(t => (
+              <button
+                key={t.id}
+                onClick={() => updateSettings({ theme: t.id as any })}
+                title={t.name}
+                className={`w-7 h-7 rounded-full border cursor-pointer transition-all hover:scale-110 flex items-center justify-center ${t.color} ${settings.theme === t.id ? "scale-110 ring-2 ring-primary ring-offset-2 ring-offset-background" : "opacity-80"}`}
+              >
+                {settings.theme === t.id && (
+                  <span className={`w-1.5 h-1.5 rounded-full ${t.id === 'beige' || t.id === 'sakura' ? 'bg-primary' : 'bg-white'}`} />
+                )}
+              </button>
+            ))}
+          </div>
         </Row>
       </Section>
 

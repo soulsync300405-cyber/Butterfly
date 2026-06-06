@@ -160,6 +160,90 @@
   --chart-5: 280 50% 40%;
 }
 
+.theme-cyberpunk {
+  --background: 260 60% 4%;
+  --foreground: 180 100% 90%;
+  --border: 320 80% 20%;
+  --input: 320 80% 20%;
+  --ring: 320 100% 60%;
+  --card: 260 50% 8%;
+  --card-foreground: 180 100% 90%;
+  --card-border: 320 80% 25%;
+  --primary: 320 100% 60%;
+  --primary-foreground: 260 60% 4%;
+  --secondary: 180 100% 50%;
+  --secondary-foreground: 260 60% 4%;
+  --accent: 38 100% 60%;
+  --accent-foreground: 0 0% 0%;
+  --muted: 260 30% 18%;
+  --muted-foreground: 180 40% 60%;
+  --destructive: 0 100% 60%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+.theme-antigravity {
+  --background: 270 50% 5%;
+  --foreground: 180 100% 90%;
+  --border: 270 30% 20%;
+  --input: 270 30% 20%;
+  --ring: 280 100% 70%;
+  --card: 270 40% 8%;
+  --card-foreground: 180 100% 90%;
+  --card-border: 270 30% 25%;
+  --primary: 280 100% 70%;
+  --primary-foreground: 270 50% 5%;
+  --secondary: 145 100% 60%;
+  --secondary-foreground: 270 50% 5%;
+  --accent: 190 100% 50%;
+  --accent-foreground: 0 0% 0%;
+  --muted: 270 20% 18%;
+  --muted-foreground: 270 15% 65%;
+  --destructive: 0 100% 60%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+.theme-sakura {
+  --background: 340 60% 97%;
+  --foreground: 340 40% 15%;
+  --border: 340 30% 90%;
+  --input: 340 30% 90%;
+  --ring: 340 75% 55%;
+  --card: 340 80% 99%;
+  --card-foreground: 340 40% 15%;
+  --card-border: 340 30% 92%;
+  --primary: 340 75% 55%;
+  --primary-foreground: 340 60% 97%;
+  --secondary: 120 30% 60%;
+  --secondary-foreground: 340 40% 15%;
+  --accent: 20 90% 70%;
+  --accent-foreground: 340 40% 15%;
+  --muted: 340 20% 90%;
+  --muted-foreground: 340 15% 50%;
+  --destructive: 0 80% 50%;
+  --destructive-foreground: 340 60% 97%;
+}
+
+.theme-retro {
+  --background: 240 50% 6%;
+  --foreground: 300 100% 90%;
+  --border: 240 30% 20%;
+  --input: 240 30% 20%;
+  --ring: 320 100% 60%;
+  --card: 240 40% 10%;
+  --card-foreground: 300 100% 90%;
+  --card-border: 240 30% 24%;
+  --primary: 320 100% 60%;
+  --primary-foreground: 240 50% 6%;
+  --secondary: 200 100% 50%;
+  --secondary-foreground: 240 50% 6%;
+  --accent: 45 100% 55%;
+  --accent-foreground: 0 0% 0%;
+  --muted: 240 20% 20%;
+  --muted-foreground: 240 15% 65%;
+  --destructive: 0 100% 55%;
+  --destructive-foreground: 0 0% 100%;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -169,3 +253,127 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* ══ ANTIGRAVITY THEME EFFECTS ══════════════════════════════════════════════ */
+
+/* Card hover: lift + purple glow */
+.ag-card-hover {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.25s ease,
+              border-color 0.25s ease;
+  will-change: transform;
+}
+.ag-card-hover:hover {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: 0 0 0 1px rgba(168,85,247,0.35),
+              0 8px 32px rgba(139,92,246,0.25),
+              0 0 60px rgba(99,102,241,0.12);
+  border-color: rgba(168,85,247,0.4) !important;
+}
+
+/* Sidebar nav items: purple underline sweep */
+.ag-nav-item {
+  position: relative;
+  overflow: hidden;
+}
+.ag-nav-item::after {
+  content: '';
+  position: absolute;
+  left: -100%;
+  top: 0; bottom: 0;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(168,85,247,0.15), transparent);
+  transition: left 0.35s ease;
+  pointer-events: none;
+}
+.ag-nav-item:hover::after { left: 100%; }
+
+/* Buttons: ripple glow pulse on hover */
+.ag-btn-glow {
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+.ag-btn-glow:hover {
+  box-shadow: 0 0 20px rgba(168,85,247,0.5), 0 0 40px rgba(99,102,241,0.2);
+  transform: translateY(-1px) scale(1.02);
+}
+.ag-btn-glow:active { transform: scale(0.97); }
+
+/* Floating gentle bob animation */
+@keyframes ag-float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-6px) rotate(0.5deg); }
+  66%       { transform: translateY(-3px) rotate(-0.3deg); }
+}
+.ag-float { animation: ag-float 6s ease-in-out infinite; }
+.ag-float-slow { animation: ag-float 10s ease-in-out infinite; }
+
+/* Shimmer sweep across card surface */
+@keyframes ag-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.ag-shimmer {
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(168,85,247,0.08) 50%,
+    transparent 60%
+  );
+  background-size: 200% 100%;
+  animation: ag-shimmer 3.5s linear infinite;
+}
+
+/* Glowing ring pulse on active/important elements */
+@keyframes ag-ring-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(168,85,247,0.5); }
+  70%  { box-shadow: 0 0 0 10px rgba(168,85,247,0); }
+  100% { box-shadow: 0 0 0 0 rgba(168,85,247,0); }
+}
+.ag-ring-pulse { animation: ag-ring-pulse 2.5s ease-out infinite; }
+
+/* Star twinkle for small decorative elements */
+@keyframes ag-star-spin {
+  0%   { transform: scale(1) rotate(0deg); opacity: 0.6; }
+  50%  { transform: scale(1.4) rotate(180deg); opacity: 1; }
+  100% { transform: scale(1) rotate(360deg); opacity: 0.6; }
+}
+.ag-star-spin { animation: ag-star-spin 4s linear infinite; }
+
+/* Orbit ring around avatar/logo */
+@keyframes ag-orbit {
+  from { transform: rotate(0deg) translateX(28px) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(28px) rotate(-360deg); }
+}
+.ag-orbit-dot {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(168,85,247,0.8);
+  box-shadow: 0 0 8px rgba(168,85,247,0.8);
+  animation: ag-orbit 4s linear infinite;
+}
+.ag-orbit-dot-2 { animation-delay: -2s; animation-duration: 6s; background: rgba(99,102,241,0.8); box-shadow: 0 0 8px rgba(99,102,241,0.8); }
+.ag-orbit-dot-3 { animation-delay: -1s; animation-duration: 5s; background: rgba(236,72,153,0.7); box-shadow: 0 0 8px rgba(236,72,153,0.7); }
+
+/* Neon text glow */
+.ag-neon-text {
+  text-shadow: 0 0 8px rgba(168,85,247,0.6),
+               0 0 20px rgba(139,92,246,0.3);
+}
+
+/* Scanline overlay for cyberpunk-adjacent feel */
+@keyframes ag-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+/* Input focus: purple border glow */
+.ag-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(168,85,247,0.4),
+              inset 0 0 12px rgba(168,85,247,0.05);
+  border-color: rgba(168,85,247,0.6) !important;
+}
+
