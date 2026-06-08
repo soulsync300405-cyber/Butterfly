@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { fetchGeminiDirect } from "@/lib/gemini";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Target, BookOpen, UserCheck, BarChart2, Settings as SettingsIcon,
@@ -46,7 +47,7 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background relative z-10">
-      {settings.theme === "antigravity" && <AntigravityCanvas />}
+      {(settings.theme === "antigravity" || settings.theme === "cyberpunk" || settings.theme === "dark-death" || settings.theme === "netflix" || settings.theme === "beige-forest" || settings.theme === "butterfly") && <AntigravityCanvas />}
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-card border-r border-border flex flex-col">
         {/* Brand */}
@@ -181,51 +182,34 @@ function ChatTab() {
     const aiMsgId = Date.now() + 1;
 
     try {
-      const resp = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: history,
-          userName: user?.name,
-          companionName: companion?.name,
-          language: companion?.language,
-        }),
-      });
+      // Add realistic typing delay so Asha feels natural
+      const delay = 900 + Math.random() * 800;
+      await new Promise(res => setTimeout(res, delay));
 
-      if (!resp.ok || !resp.body) throw new Error("No response");
+      const reply = await fetchGeminiDirect(history);
 
       setTyping(false);
       setMessages(p => [...p, { id: aiMsgId, role: "ai", text: "", time: getTime(), speaking: false }]);
 
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.content) {
-              fullText += data.content;
-              setMessages(p => p.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m));
-            }
-          } catch { /* partial JSON, ignore */ }
-        }
+      // Simulate typewriter effect for local responses
+      let displayed = "";
+      const words = reply.split(" ");
+      for (const word of words) {
+        displayed += (displayed ? " " : "") + word;
+        setMessages(p => p.map(m => m.id === aiMsgId ? { ...m, text: displayed } : m));
+        await new Promise(res => setTimeout(res, 28 + Math.random() * 22));
       }
     } catch {
       setTyping(false);
       setMessages(p => [...p, {
         id: aiMsgId, role: "ai", speaking: false, time: getTime(),
-        text: "Yaar, connection thodi shaky ho gayi abhi — ek second mein try karo, main yahan hoon 🙏",
+        text: "Yaar, ek second — dobara try karo! 🙏",
       }]);
     } finally {
       setIsStreaming(false);
     }
   };
+
 
   const sendOverride = () => {
     if (!overrideMsg.trim()) return;
@@ -747,7 +731,7 @@ function LearnTab({ playing, setPlaying }: { playing: typeof COURSES[0] | null; 
   if (playing) {
     const ytId = (playing as any).youtubeId;
     return (
-      <div className="h-full flex flex-col bg-[#0a0a0c]">
+      <div className="h-full flex flex-col bg-background">
         {/* Video area */}
         <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
           <AnimatePresence>
@@ -847,35 +831,35 @@ function LearnTab({ playing, setPlaying }: { playing: typeof COURSES[0] | null; 
   }
 
   return (
-    <div className="bg-[#0c0d12] min-h-full text-white pb-12">
+    <div className="bg-background min-h-full text-foreground pb-12">
       {/* Featured hero (Netflix SpotLight) */}
       <div className="relative overflow-hidden aspect-[21/9] sm:aspect-[2.39/1] min-h-[300px] flex items-center p-8 sm:p-12">
         {/* Cinematic Backdrop Gradient */}
         <div className={`absolute inset-0 bg-gradient-to-br ${featured.gradient} opacity-20 blur-2xl scale-110`} />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0c0d12] via-[#0c0d12]/50 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0c0d12] via-[#0c0d12]/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
 
         <div className="relative max-w-xl space-y-4 z-10">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 bg-primary text-primary-foreground rounded-full">POPULAR</span>
             <span className="text-xs text-primary font-bold">{featured.category}</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black font-serif text-white leading-tight drop-shadow-md">{featured.title}</h2>
-          <p className="text-white/60 text-xs sm:text-sm leading-relaxed line-clamp-3 max-w-md">{featured.desc}</p>
+          <h2 className="text-3xl sm:text-4xl font-black font-serif text-foreground leading-tight drop-shadow-md">{featured.title}</h2>
+          <p className="text-foreground/70 text-xs sm:text-sm leading-relaxed line-clamp-3 max-w-md">{featured.desc}</p>
           <div className="flex items-center gap-3 pt-2">
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
               onClick={() => setPlaying(featured)}
-              className="flex items-center gap-2 bg-white text-black font-black px-6 py-3.5 rounded-xl text-xs hover:bg-white/90 transition-colors cursor-pointer shadow-lg shadow-black/20">
-              <Play size={14} className="fill-black" /> PLAY NOW
+              className="flex items-center gap-2 bg-foreground text-background font-black px-6 py-3.5 rounded-xl text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-lg shadow-black/20">
+              <Play size={14} className="fill-background text-background" /> PLAY NOW
             </motion.button>
-            <span className="text-xs text-white/40 font-semibold">{featured.episodes} Episodes · {featured.duration}</span>
+            <span className="text-xs text-muted-foreground font-semibold">{featured.episodes} Episodes · {featured.duration}</span>
           </div>
         </div>
       </div>
 
       {/* Netflix Categories Slider */}
       <div className="px-6 sm:px-8 -mt-4 mb-6">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/5" style={{ scrollbarWidth: "none" }}>
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-border" style={{ scrollbarWidth: "none" }}>
           {categories.map(cat => (
             <button
               key={cat}
@@ -883,7 +867,7 @@ function LearnTab({ playing, setPlaying }: { playing: typeof COURSES[0] | null; 
               className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
                 activeCategory === cat
                   ? "bg-primary border-primary text-primary-foreground"
-                  : "bg-white/5 border-white/10 text-white/60 hover:text-white hover:border-white/20"
+                  : "bg-muted/10 border-border text-muted-foreground hover:text-foreground hover:border-border/60"
               }`}
             >
               {cat}
@@ -896,12 +880,12 @@ function LearnTab({ playing, setPlaying }: { playing: typeof COURSES[0] | null; 
       <div className="px-6 sm:px-8 space-y-8 relative z-10">
         {rows.map(row => (
           <div key={row.label} className="space-y-3">
-            <h3 className="text-white font-black text-sm tracking-wider uppercase font-serif">{row.label}</h3>
+            <h3 className="text-foreground font-black text-sm tracking-wider uppercase font-serif">{row.label}</h3>
             <div className="flex gap-4 overflow-x-auto pb-4 pt-1" style={{ scrollbarWidth: "none" }}>
               {row.courses.map(course => (
                 <motion.button key={course.id} whileHover={{ scale: 1.05, y: -4 }} whileTap={{ scale: 0.98 }}
                   onClick={() => setPlaying(course)}
-                  className="flex-shrink-0 w-48 rounded-2xl overflow-hidden cursor-pointer group shadow-xl bg-[#141620] border border-white/5 text-left transition-all">
+                  className="flex-shrink-0 w-48 rounded-2xl overflow-hidden cursor-pointer group shadow-xl bg-card border border-border text-left transition-all">
 
                   {/* Thumbnail */}
                   <div className={`relative bg-gradient-to-br ${course.gradient} aspect-[16/10] flex flex-col items-center justify-center overflow-hidden`}>
@@ -930,13 +914,13 @@ function LearnTab({ playing, setPlaying }: { playing: typeof COURSES[0] | null; 
 
                   {/* Info strip */}
                   <div className="p-3.5 space-y-1">
-                    <p className="text-white text-xs font-black leading-tight line-clamp-1 group-hover:text-primary transition-colors">{course.title}</p>
-                    <div className="flex items-center justify-between text-[9px] text-white/50">
+                    <p className="text-foreground text-xs font-black leading-tight line-clamp-1 group-hover:text-primary transition-colors">{course.title}</p>
+                    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
                       <span>{course.episodes} Episodes</span>
                       <span className="text-primary font-bold">{course.matchScore}% Match</span>
                     </div>
                     {/* Fake progress bar */}
-                    <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-2">
+                    <div className="w-full h-1 bg-muted rounded-full overflow-hidden mt-2">
                       <div className="h-full bg-primary" style={{ width: course.id === 1 ? "35%" : course.id === 2 ? "12%" : "0%" }} />
                     </div>
                   </div>
@@ -1118,9 +1102,13 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
   };
 
   useEffect(() => {
-    startCamera();
+    if (activeSubTab === "vibe") {
+      startCamera();
+    } else {
+      stopCamera();
+    }
     return () => stopCamera();
-  }, []);
+  }, [activeSubTab]);
 
   // Handle Scanning for Vibe
   const handleVibeScan = () => {
@@ -1204,11 +1192,11 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
     setHumorScores(null);
     
     const steps = [
-      "Initializing camera feedback...",
-      "Analyzing goofy parameters...",
-      "Measuring eye-squint humor index...",
-      "Calculating smile-curve sarcasm factor...",
-      "Calibrating results against quiz profiles..."
+      "Compiling quiz responses...",
+      "Calibrating sarcasm coefficient...",
+      "Measuring deadpan index...",
+      "Correlating hostel mess paneer ratings...",
+      "Finalizing humor quotient..."
     ];
     
     let currentStep = 0;
@@ -1383,13 +1371,13 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
         </div>
         <div className="flex bg-muted rounded-xl p-1 border border-border">
           <button
-            onClick={() => { setActiveSubTab("vibe"); stopCamera(); startCamera(); }}
+            onClick={() => setActiveSubTab("vibe")}
             className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeSubTab === "vibe" ? "bg-background shadow text-primary" : "text-muted-foreground"}`}
           >
             Mood Scan
           </button>
           <button
-            onClick={() => { setActiveSubTab("humor"); stopCamera(); startCamera(); }}
+            onClick={() => setActiveSubTab("humor")}
             className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeSubTab === "humor" ? "bg-background shadow text-primary" : "text-muted-foreground"}`}
           >
             Humor Analyzer
@@ -1401,39 +1389,72 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
         {/* Left Column: Camera Viewport */}
         <div className="flex flex-col space-y-4">
           <div className="relative aspect-video bg-black rounded-3xl border border-primary/20 overflow-hidden shadow-2xl group flex items-center justify-center">
-            {cameraActive && !cameraError ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover scale-x-[-1]"
-              />
-            ) : (
-              <div className="text-center p-6 space-y-3">
-                <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse">
-                  <Camera size={28} />
+            {activeSubTab === "vibe" ? (
+              cameraActive && !cameraError ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover scale-x-[-1]"
+                />
+              ) : (
+                <div className="text-center p-6 space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse">
+                    <Camera size={28} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {cameraError ? "Camera access denied or unavailable. Using simulated avatar feed." : "Accessing camera..."}
+                  </p>
+                  {cameraError && (
+                    <button onClick={startCamera} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg font-semibold hover:opacity-90 cursor-pointer">
+                      Retry Permission
+                    </button>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {cameraError ? "Camera access denied or unavailable. Using simulated avatar feed." : "Accessing camera..."}
-                </p>
-                {cameraError && (
-                  <button onClick={startCamera} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg font-semibold hover:opacity-90 cursor-pointer">
-                    Retry Permission
-                  </button>
-                )}
+              )
+            ) : (
+              <div className="text-center p-6 space-y-4 w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-primary/5">
+                <div className="absolute inset-0 grid opacity-10" style={{ backgroundImage: "linear-gradient(hsl(145 33% 40%) 1px, transparent 1px), linear-gradient(90deg, hsl(145 33% 40%) 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
+                <motion.div 
+                  animate={{ 
+                    scale: scanning ? [1, 1.05, 1] : 1,
+                    rotate: scanning ? [0, 5, -5, 0] : 0 
+                  }} 
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="relative z-10"
+                >
+                  <AnimeAvatar 
+                    size={80} 
+                    style={companion?.appearance as any || "soft-pastel"} 
+                    gender={companion?.gender || "female"} 
+                    speaking={scanning}
+                  />
+                </motion.div>
+                <div className="space-y-1.5 z-10 max-w-[80%]">
+                  <p className="text-xs font-black text-primary font-serif">{companion?.name || "Asha"}'s Brainwave Scanner</p>
+                  <p className="text-[10px] text-muted-foreground leading-normal font-sans">
+                    {scanning 
+                      ? "Calibrating humor metrics against your answers..." 
+                      : !quizCompleted 
+                      ? "Awaiting quiz responses. I'll read your style directly from your choices! 🧠" 
+                      : "Quiz responses logged! Press the button below to generate your scorecard."}
+                  </p>
+                </div>
               </div>
             )}
 
             {/* Target Brackets Bounding Box */}
-            <div className="absolute inset-8 border-2 border-dashed border-white/20 rounded-2xl pointer-events-none flex items-center justify-center">
-              <span className="text-[10px] text-white/40 uppercase tracking-widest absolute top-2 font-mono">Face Target</span>
-              {/* Corner brackets */}
-              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary" />
-              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary" />
-              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary" />
-              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary" />
-            </div>
+            {activeSubTab === "vibe" && (
+              <div className="absolute inset-8 border-2 border-dashed border-white/20 rounded-2xl pointer-events-none flex items-center justify-center">
+                <span className="text-[10px] text-white/40 uppercase tracking-widest absolute top-2 font-mono">Face Target</span>
+                {/* Corner brackets */}
+                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary" />
+                <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary" />
+                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary" />
+                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary" />
+              </div>
+            )}
 
             {/* Green Laser Sweep Line */}
             {scanning && (
@@ -1606,7 +1627,7 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
                       )}
 
                       {/* Real-time Joke Generator */}
-                      <div className="bg-[#141620] border border-white/5 rounded-2xl p-4 space-y-3 text-white">
+                      <div className="bg-card border border-border rounded-2xl p-4 space-y-3 text-foreground">
                         <div className="flex items-center justify-between">
                           <h4 className="text-xs font-black uppercase tracking-wider text-primary font-serif">Real-Time Jokes</h4>
                           <button
@@ -1617,11 +1638,11 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
                             {isGeneratingJoke ? "Generating..." : "Generate Joke"}
                           </button>
                         </div>
-                        <div className="min-h-[60px] bg-black/30 border border-white/5 rounded-xl p-3 flex items-center justify-center">
+                        <div className="min-h-[60px] bg-muted/40 border border-border rounded-xl p-3 flex items-center justify-center">
                           {jokeStreamedText ? (
-                            <p className="text-xs leading-normal font-medium text-white/90 italic font-sans">{jokeStreamedText}</p>
+                            <p className="text-xs leading-normal font-medium text-foreground/90 italic font-sans">{jokeStreamedText}</p>
                           ) : (
-                            <p className="text-xs text-white/45 text-center font-sans">Click "Generate Joke" to generate a Hinglish joke streaming in real-time!</p>
+                            <p className="text-xs text-muted-foreground text-center font-sans">Click "Generate Joke" to generate a Hinglish joke streaming in real-time!</p>
                           )}
                         </div>
                       </div>
@@ -1685,10 +1706,10 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
                   ) : (
                     /* Scan prompt */
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3">
-                      <div className="text-4xl animate-bounce">📸</div>
+                      <div className="text-4xl animate-bounce">🧠</div>
                       <h3 className="font-bold text-foreground font-serif">Quiz Completed!</h3>
                       <p className="text-xs text-muted-foreground max-w-xs leading-normal font-sans">
-                        Your answers are logged! Now, trigger the face scanner scan to calibrate your facial landmarks and finalize your humor scorecard!
+                        Your answers are logged! Now, trigger the humor analysis to calculate your score and reveal your humor archetype!
                       </p>
                       <button
                         onClick={handleResetQuiz}
@@ -2565,29 +2586,67 @@ function SettingsTab() {
             <option value="large">Large</option>
           </select>
         </Row>
-        <Row label="Color Theme" sub="Change the application visual aura">
-          <div className="flex gap-2">
-            {[
-              { id: 'beige', name: 'Beige Forest', color: 'bg-[#FAF7F2] border-[#2D5A3D]' },
-              { id: 'dark', name: 'Midnight Dark', color: 'bg-[#141414] border-white/20' },
-              { id: 'cyberpunk', name: 'Cyberpunk Neon', color: 'bg-[#0a0014] border-[#ff0099]' },
-              { id: 'antigravity', name: 'Antigravity Space', color: 'bg-[#080310] border-[#b366ff]' },
-              { id: 'sakura', name: 'Sakura Blossom', color: 'bg-[#fdf7f9] border-[#ff80bf]' },
-              { id: 'retro', name: 'Retro Vaporwave', color: 'bg-[#050510] border-[#ff007f]' },
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => updateSettings({ theme: t.id as any })}
-                title={t.name}
-                className={`w-7 h-7 rounded-full border cursor-pointer transition-all hover:scale-110 flex items-center justify-center ${t.color} ${settings.theme === t.id ? "scale-110 ring-2 ring-primary ring-offset-2 ring-offset-background" : "opacity-80"}`}
-              >
-                {settings.theme === t.id && (
-                  <span className={`w-1.5 h-1.5 rounded-full ${t.id === 'beige' || t.id === 'sakura' ? 'bg-primary' : 'bg-white'}`} />
-                )}
-              </button>
-            ))}
+        <div className="px-5 py-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">Color Theme</p>
+            <p className="text-xs text-muted-foreground mt-0.5 font-sans">Select your visual aura. The active theme implements globally across the app.</p>
           </div>
-        </Row>
+          <div className="w-full overflow-x-auto border border-border rounded-xl bg-card">
+            <table className="w-full text-left border-collapse text-[11px] font-sans">
+              <thead>
+                <tr className="bg-muted/40 border-b border-border font-serif">
+                  <th className="p-2.5 font-black text-foreground">Theme Name</th>
+                  <th className="p-2.5 font-black text-foreground">Visual Aura</th>
+                  <th className="p-2.5 font-black text-foreground text-center">Swatches</th>
+                  <th className="p-2.5 font-black text-foreground text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {[
+                  { id: 'butterfly', name: 'Butterfly Garden', desc: 'Dreamy lilac sky with graceful fluttering butterflies & petals', colorBg: '#F0EBF9', colorAccent: '#9B4ECC' },
+                  { id: 'beige-forest', name: 'Beige Forest', desc: 'Living parchment with swaying plants, fireflies & falling leaves', colorBg: '#F5EFE0', colorAccent: '#2D5A3D' },
+                  { id: 'beige', name: 'Beige Classic', desc: 'Warm beige tones with comforting forest green accents', colorBg: '#FAF7F2', colorAccent: '#2D5A3D' },
+                  { id: 'dark', name: 'Midnight Dark', desc: 'Sleek low-light slate theme for late-night wellness', colorBg: '#141414', colorAccent: '#ffffff' },
+                  { id: 'cyberpunk', name: 'Cyberpunk Neon', desc: 'Deep purple background with neon pink & cyan digital grid', colorBg: '#0a0014', colorAccent: '#ff0099' },
+                  { id: 'antigravity', name: 'Antigravity Space', desc: 'Cosmic drifting stars & gravity-defying purple nebulae', colorBg: '#080310', colorAccent: '#b366ff' },
+                  { id: 'sakura', name: 'Sakura Blossom', desc: 'Soft pastel pink blossoms for a serene, calm mood', colorBg: '#fdf7f9', colorAccent: '#ff80bf' },
+                  { id: 'retro', name: 'Retro Vaporwave', desc: '80s arcade feel with magenta grids & vaporwave colors', colorBg: '#050510', colorAccent: '#ff007f' },
+                  { id: 'dark-death', name: 'Dark Death Gothic', desc: 'Obsidian black backdrop with rising crimson ash embers', colorBg: '#050202', colorAccent: '#ff2222' },
+                  { id: 'netflix', name: 'Netflix Cinematic', desc: 'Cinematic obsidian black backdrop with signature crimson red accents', colorBg: '#0b0b0b', colorAccent: '#E50914' },
+                ].map(t => {
+                  const isActive = settings.theme === t.id;
+                  return (
+                    <tr 
+                      key={t.id} 
+                      onClick={() => updateSettings({ theme: t.id as any })}
+                      className={`hover:bg-muted/30 transition-colors cursor-pointer ${isActive ? 'bg-primary/5 font-semibold' : ''}`}
+                    >
+                      <td className="p-2.5 text-foreground font-serif font-bold">{t.name}</td>
+                      <td className="p-2.5 text-muted-foreground leading-normal">{t.desc}</td>
+                      <td className="p-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="w-3.5 h-3.5 rounded-full border border-border inline-block" style={{ backgroundColor: t.colorBg }} />
+                          <span className="w-3.5 h-3.5 rounded-full border border-border inline-block" style={{ backgroundColor: t.colorAccent }} />
+                        </div>
+                      </td>
+                      <td className="p-2.5 text-right">
+                        {isActive ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-primary/20 text-primary">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground hover:text-primary transition-colors text-[9px] font-bold uppercase tracking-wider">
+                            Apply
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </Section>
 
       {/* Support */}

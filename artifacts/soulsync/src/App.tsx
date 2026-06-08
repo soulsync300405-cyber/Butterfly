@@ -28,7 +28,7 @@ function AppInner() {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.remove("dark", "theme-cyberpunk", "theme-antigravity", "theme-sakura", "theme-retro", "light");
+    root.classList.remove("dark", "theme-cyberpunk", "theme-antigravity", "theme-sakura", "theme-retro", "theme-dark-death", "theme-netflix", "theme-beige-forest", "theme-butterfly", "light");
     if (theme === "dark") {
       root.classList.add("dark");
     } else if (theme === "cyberpunk") {
@@ -39,6 +39,14 @@ function AppInner() {
       root.classList.add("theme-sakura");
     } else if (theme === "retro") {
       root.classList.add("theme-retro");
+    } else if (theme === "dark-death") {
+      root.classList.add("theme-dark-death");
+    } else if (theme === "netflix") {
+      root.classList.add("theme-netflix");
+    } else if (theme === "beige-forest") {
+      root.classList.add("theme-beige-forest");
+    } else if (theme === "butterfly") {
+      root.classList.add("theme-butterfly");
     }
   }, [theme]);
 

@@ -112,10 +112,13 @@ function useDuration(running: boolean) {
 // ── Main CallUI ──────────────────────────────────────────────────────────────
 export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const [phase, setPhase] = useState<"permission" | "starting" | "active">("permission");
+  const [voiceTestResult, setVoiceTestResult] = useState<"untested" | "ok" | "fail">("untested");
   const local = useLocalStream(type !== "ai-voice");
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [speakerMuted, setSpeakerMuted] = useState(false);
+  const [typeInput, setTypeInput] = useState("");
+  const synthUnlockedRef = useRef(false);
 
   const roomId = `psych-${(psychName || "asha").toLowerCase().replace(/\s+/g, "-")}-room`;
   const webrtc = useWebRTC(roomId, type === "psychologist" ? local.stream : null);
@@ -142,8 +145,41 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
     }
   }, [webrtc.remoteStream]);
 
+  // ── Prepare speech synthesis on button click (synchronous, in gesture context)
+  const unlockSynth = () => {
+    if (synthUnlockedRef.current || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    synthUnlockedRef.current = true;
+    // Just clear any stale state — Edge/Chrome don't need a dummy utterance
+    // if synthesis was never started (avoids creating a pending utterance that
+    // interferes with the greeting speak() call).
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+  };
+
+  // ── Test voice button handler (synchronous — user gesture context preserved)
+  const handleTestVoice = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setVoiceTestResult("fail");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance("Hello, voice is working!");
+    utt.volume = 1;
+    utt.rate = 0.9;
+    utt.onend = () => setVoiceTestResult("ok");
+    utt.onerror = () => setVoiceTestResult("fail");
+    window.speechSynthesis.speak(utt);
+    synthUnlockedRef.current = true;
+  };
+
   const handleStart = useCallback(async () => {
+    // CRITICAL: Unlock TTS synchronously HERE — before any await.
+    // Chrome blocks speechSynthesis.speak() if the first call isn't
+    // in the direct synchronous user-gesture handler.
+    unlockSynth();
+
     setPhase("starting");
+    // Small pause so the unlock utterance registers before we proceed
+    await new Promise(r => setTimeout(r, 150));
     await local.start();
 
     if (type === "psychologist") {
@@ -152,7 +188,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
       aiCall.startCall();
     }
 
-    setTimeout(() => setPhase("active"), 800);
+    setTimeout(() => setPhase("active"), 600);
   }, [local, type, webrtc, aiCall]);
 
   const handleEnd = useCallback(() => {
@@ -162,9 +198,29 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
     onEnd();
   }, [local, aiCall, type, webrtc, onEnd]);
 
+  const handleTypeSend = useCallback(() => {
+    const text = typeInput.trim();
+    if (!text) return;
+    setTypeInput("");
+    aiCall.sendText(text);
+  }, [typeInput, aiCall]);
+
   const bars = Array.from({ length: 24 });
   const aiSpeaking = (type === "ai-voice" || type === "ai-video") && aiCall.callState === "speaking";
   const aiListening = (type === "ai-voice" || type === "ai-video") && aiCall.callState === "listening";
+  const isAIBusy = aiCall.callState === "thinking" || aiCall.callState === "speaking";
+  const [isPTT, setIsPTT] = useState(false);
+
+  const handlePTTStart = () => {
+    if (isAIBusy) return;
+    setIsPTT(true);
+    aiCall.startPTT();
+  };
+  const handlePTTEnd = () => {
+    if (!isPTT) return;
+    setIsPTT(false);
+    aiCall.stopPTT();
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -240,6 +296,25 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                     </div>
                   ))}
                 </div>
+
+                {/* Test voice — lets user verify TTS works before starting */}
+                {(type === "ai-voice" || type === "ai-video") && (
+                  <div className="flex items-center justify-between px-1">
+                    <button
+                      onClick={handleTestVoice}
+                      className="flex items-center gap-1.5 text-xs text-white/40 hover:text-primary transition-colors bg-transparent border-none cursor-pointer"
+                    >
+                      <Volume2 size={12} />
+                      Test voice
+                    </button>
+                    {voiceTestResult === "ok" && (
+                      <span className="text-[11px] text-emerald-400 font-semibold">✓ Voice working</span>
+                    )}
+                    {voiceTestResult === "fail" && (
+                      <span className="text-[11px] text-red-400">✗ No voice — check system audio</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Privacy note */}
                 <p className="text-center text-[11px] text-white/30 flex items-center justify-center gap-1.5">
@@ -395,7 +470,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                         </div>
                       </motion.div>
                     )}
-                    {aiCall.ashaText && aiCall.callState === "speaking" && (
+                    {aiCall.ashaText && (aiCall.callState === "speaking" || aiCall.callState === "thinking") && (
                       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                         <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm text-white/90 border border-primary/20"
                           style={{ background: "rgba(58,122,82,0.2)", backdropFilter: "blur(8px)" }}>
@@ -413,59 +488,121 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                     </div>
                   )}
 
-                  {/* Error / Fallback typing HUD */}
+                  {/* Error badge */}
                   {aiCall.error && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className="bg-card/90 border border-white/10 rounded-2xl p-4 space-y-3 shadow-xl max-w-sm mx-auto backdrop-blur-md">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
-                          ⚠️ {aiCall.error === "Mic: network" ? "Voice connection issue" : aiCall.error}
-                        </span>
-                        <button 
-                          onClick={aiCall.clearError}
-                          className="text-[10px] font-black text-primary hover:underline uppercase tracking-widest bg-transparent border-none cursor-pointer"
-                        >
-                          Retry Mic 🔄
-                        </button>
-                      </div>
-                      <p className="text-white/60 text-xs leading-normal">
-                        Your browser's speech recognition service is temporarily offline or unreachable. You can type instead:
-                      </p>
-                      <div className="flex gap-2 bg-white/5 border border-white/8 rounded-xl px-3 py-2">
-                        <input
-                          type="text"
-                          placeholder="Type your response & press Enter..."
-                          className="flex-1 bg-transparent border-none text-white text-xs outline-none"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                              aiCall.sendText(e.currentTarget.value.trim());
-                              e.currentTarget.value = "";
-                            }
-                          }}
-                        />
-                      </div>
+                    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center justify-between px-3 py-2 rounded-xl border border-amber-500/30"
+                      style={{ background: "rgba(245,158,11,0.08)" }}>
+                      <span className="text-[10px] text-amber-400 font-semibold">
+                        ⚠️ Mic issue — type below
+                      </span>
+                      <button
+                        onClick={aiCall.clearError}
+                        className="text-[10px] text-primary font-bold hover:underline bg-transparent border-none cursor-pointer"
+                      >
+                        Retry mic
+                      </button>
                     </motion.div>
                   )}
+
+                  {/* Always-visible text input — type any time */}
+                  <div className="flex gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 mt-1">
+                    <input
+                      type="text"
+                      value={typeInput}
+                      onChange={(e) => setTypeInput(e.target.value)}
+                      placeholder={isAIBusy ? "Asha is speaking..." : "Type if mic isn't working..."}
+                      disabled={isAIBusy}
+                      className="flex-1 bg-transparent border-none text-white text-xs outline-none placeholder:text-white/25 disabled:opacity-40"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleTypeSend();
+                      }}
+                    />
+                    <button
+                      onClick={handleTypeSend}
+                      disabled={isAIBusy || !typeInput.trim()}
+                      className="text-[10px] text-primary font-bold disabled:opacity-30 bg-transparent border-none cursor-pointer hover:text-primary/80 transition-colors"
+                    >
+                      Send
+                    </button>
+                  </div>
                 </div>
 
                 {/* Controls */}
-                <div className="flex items-center gap-4">
-                  <CtrlBtn icon={local.muted ? MicOff : Mic} active={!local.muted} danger={local.muted}
-                    onClick={local.toggleMute} label={local.muted ? "Unmute" : "Mute"} />
-                  <CtrlBtn icon={speakerMuted ? VolumeX : Volume2} active={!speakerMuted}
-                    onClick={() => setSpeakerMuted(m => !m)} label="Speaker" />
-                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.93 }}
-                    onClick={handleEnd}
-                    className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl shadow-red-900/40"
-                    style={{ background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)" }}>
-                    <PhoneOff size={22} className="text-white" />
-                  </motion.button>
-                  {type !== "ai-voice" && (
-                    <CtrlBtn icon={local.camOff ? EyeOff : Camera} active={!local.camOff}
-                      onClick={local.toggleCam} label="Camera" />
+                <div className="flex flex-col items-center gap-5">
+
+                  {/* ── Push-to-talk — primary interaction ── */}
+                  {aiCall.hasSR && (
+                    <div className="flex flex-col items-center gap-2">
+                      <motion.button
+                        onPointerDown={handlePTTStart}
+                        onPointerUp={handlePTTEnd}
+                        onPointerLeave={handlePTTEnd}
+                        onContextMenu={(e) => e.preventDefault()}
+                        disabled={isAIBusy}
+                        className="relative flex items-center justify-center focus:outline-none select-none touch-none"
+                        style={{ WebkitUserSelect: "none" }}
+                      >
+                        {/* Outer pulse ring — only when recording */}
+                        {isPTT && (
+                          <>
+                            <motion.div
+                              animate={{ scale: [1, 1.5, 1], opacity: [0.4, 0, 0.4] }}
+                              transition={{ duration: 1.2, repeat: Infinity }}
+                              className="absolute inset-0 rounded-full border-2 border-primary"
+                              style={{ margin: -16 }}
+                            />
+                            <motion.div
+                              animate={{ scale: [1, 1.8, 1], opacity: [0.2, 0, 0.2] }}
+                              transition={{ duration: 1.2, repeat: Infinity, delay: 0.3 }}
+                              className="absolute inset-0 rounded-full border border-primary"
+                              style={{ margin: -30 }}
+                            />
+                          </>
+                        )}
+                        {/* Main button */}
+                        <motion.div
+                          animate={isPTT
+                            ? { boxShadow: "0 0 32px rgba(58,122,82,0.6)" }
+                            : { boxShadow: "0 0 0px rgba(58,122,82,0)" }
+                          }
+                          transition={{ duration: 0.2 }}
+                          className={`w-24 h-24 rounded-full flex items-center justify-center border-2 transition-colors duration-150 ${
+                            isAIBusy
+                              ? "border-white/10 bg-white/5 cursor-not-allowed"
+                              : isPTT
+                                ? "border-primary bg-primary/40"
+                                : "border-primary/50 bg-primary/15 hover:bg-primary/25 cursor-pointer"
+                          }`}
+                        >
+                          <Mic size={32} className={isPTT ? "text-white" : isAIBusy ? "text-white/20" : "text-primary"} />
+                        </motion.div>
+                      </motion.button>
+                      <p className={`text-xs font-semibold transition-colors ${
+                        isPTT ? "text-primary" : isAIBusy ? "text-white/30" : "text-white/50"
+                      }`}>
+                        {isPTT ? "🔴 Listening… release to send" : isAIBusy ? "Wait for Asha…" : "Hold to speak"}
+                      </p>
+                    </div>
                   )}
-                  <CtrlBtn icon={Radio} active label="AI" onClick={() => {}} />
+
+                  {/* Secondary controls */}
+                  <div className="flex items-center gap-4">
+                    <CtrlBtn icon={speakerMuted ? VolumeX : Volume2} active={!speakerMuted}
+                      onClick={() => setSpeakerMuted(m => !m)} label="Speaker" />
+                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.93 }}
+                      onClick={handleEnd}
+                      className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl shadow-red-900/40"
+                      style={{ background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)" }}>
+                      <PhoneOff size={22} className="text-white" />
+                    </motion.button>
+                    {type !== "ai-voice" && (
+                      <CtrlBtn icon={local.camOff ? EyeOff : Camera} active={!local.camOff}
+                        onClick={local.toggleCam} label="Camera" />
+                    )}
+                  </div>
                 </div>
+
 
                 {/* Local PiP */}
                 {local.hasVideo && !local.camOff && (

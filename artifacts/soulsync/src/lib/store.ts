@@ -22,7 +22,7 @@ export type UserProfile = {
 };
 
 export type Settings = {
-  theme: 'beige' | 'dark' | 'cyberpunk' | 'antigravity' | 'sakura' | 'retro';
+  theme: 'beige' | 'dark' | 'cyberpunk' | 'antigravity' | 'sakura' | 'retro' | 'dark-death' | 'netflix' | 'beige-forest' | 'butterfly';
   notifications: boolean;
   dailyReminder: string;
   weeklyReport: boolean;

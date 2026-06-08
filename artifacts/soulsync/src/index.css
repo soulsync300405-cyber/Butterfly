@@ -244,6 +244,142 @@
   --destructive-foreground: 0 0% 100%;
 }
 
+.theme-dark-death {
+  --background: 0 10% 4%;
+  --foreground: 0 5% 85%;
+  --border: 0 50% 12%;
+  --input: 0 0% 8%;
+  --ring: 0 75% 45%;
+  --card: 0 5% 7%;
+  --card-foreground: 0 5% 85%;
+  --card-border: 0 50% 12%;
+  --primary: 0 75% 45%;
+  --primary-foreground: 0 0% 95%;
+  --secondary: 0 0% 35%;
+  --secondary-foreground: 0 0% 95%;
+  --accent: 0 100% 50%;
+  --accent-foreground: 0 0% 0%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 55%;
+  --destructive: 80 80% 40%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+.theme-netflix {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 92%;
+  --border: 0 0% 18%;
+  --input: 0 0% 12%;
+  --ring: 357 85% 47%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 92%;
+  --card-border: 0 0% 15%;
+  --primary: 357 85% 47%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 35%;
+  --secondary-foreground: 0 0% 100%;
+  --accent: 357 85% 47%;
+  --accent-foreground: 0 0% 0%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 60%;
+  --destructive: 0 85% 47%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+/* ── Beige Forest — warm earthy light theme with deep forest green ─────────── */
+.theme-beige-forest {
+  --background: 38 45% 93%;        /* warm parchment */
+  --foreground: 120 15% 14%;       /* deep forest ink */
+  --border: 90 20% 80%;
+  --input: 90 20% 82%;
+  --ring: 130 38% 30%;
+
+  --card: 38 60% 97%;              /* creamy card surface */
+  --card-foreground: 120 15% 14%;
+  --card-border: 90 20% 82%;
+
+  --sidebar: 38 60% 97%;
+  --sidebar-foreground: 120 15% 14%;
+  --sidebar-border: 90 20% 82%;
+  --sidebar-primary: 130 38% 30%;
+  --sidebar-primary-foreground: 38 45% 93%;
+  --sidebar-accent: 90 20% 80%;
+  --sidebar-accent-foreground: 120 15% 14%;
+  --sidebar-ring: 130 38% 30%;
+
+  --popover: 38 60% 97%;
+  --popover-foreground: 120 15% 14%;
+  --popover-border: 90 20% 82%;
+
+  --primary: 130 38% 28%;          /* deep forest green */
+  --primary-foreground: 38 45% 93%;
+
+  --secondary: 100 30% 52%;        /* sage green */
+  --secondary-foreground: 120 15% 14%;
+
+  --muted: 80 18% 86%;
+  --muted-foreground: 80 10% 42%;
+
+  --accent: 35 90% 52%;            /* warm amber */
+  --accent-foreground: 120 15% 14%;
+
+  --destructive: 0 75% 50%;
+  --destructive-foreground: 38 45% 93%;
+
+  --chart-1: 130 38% 28%;
+  --chart-2: 100 30% 52%;
+  --chart-3: 35 90% 52%;
+  --chart-4: 200 45% 55%;
+  --chart-5: 55 80% 50%;
+}
+
+/* ── Butterfly — Enchanted Midnight Garden ──────────────────────────────── */
+.theme-butterfly {
+  --background: 195 50% 10%;       /* dark teal — readable against canvas */
+  --foreground: 150 70% 90%;       /* bright mint-white text */
+  --border: 175 45% 26%;
+  --input: 175 40% 20%;
+  --ring: 165 80% 45%;
+
+  --card: 195 45% 15%;             /* visible dark-teal card surface */
+  --card-foreground: 150 70% 90%;
+  --card-border: 175 45% 28%;
+
+  --sidebar: 195 48% 12%;
+  --sidebar-foreground: 150 70% 90%;
+  --sidebar-border: 175 45% 24%;
+  --sidebar-primary: 165 80% 42%;
+  --sidebar-primary-foreground: 195 50% 10%;
+  --sidebar-accent: 175 40% 20%;
+  --sidebar-accent-foreground: 150 70% 90%;
+  --sidebar-ring: 165 80% 42%;
+
+  --popover: 195 45% 14%;
+  --popover-foreground: 150 70% 90%;
+  --popover-border: 175 45% 26%;
+
+  --primary: 165 80% 42%;          /* glowing emerald-teal */
+  --primary-foreground: 195 50% 5%;
+
+  --secondary: 45 95% 58%;         /* vivid golden-amber */
+  --secondary-foreground: 195 50% 5%;
+
+  --muted: 195 35% 22%;
+  --muted-foreground: 175 35% 62%;
+
+  --accent: 45 95% 58%;            /* warm gold */
+  --accent-foreground: 195 50% 5%;
+
+  --destructive: 0 75% 50%;
+  --destructive-foreground: 150 70% 90%;
+
+  --chart-1: 165 80% 42%;
+  --chart-2: 45 95% 58%;
+  --chart-3: 200 70% 55%;
+  --chart-4: 130 60% 45%;
+  --chart-5: 280 60% 60%;
+}
+
 @layer base {
   * {
     @apply border-border;
