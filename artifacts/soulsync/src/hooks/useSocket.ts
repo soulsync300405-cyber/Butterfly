@@ -6,7 +6,8 @@ let _socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!_socket) {
-    _socket = io({
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "";
+    _socket = io(backendUrl, {
       path: "/api/socket.io",
       transports: ["websocket", "polling"],
       reconnectionAttempts: 10,

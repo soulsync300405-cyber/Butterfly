@@ -3,6 +3,8 @@ import { useStore } from "@/lib/store";
 
 const CLIENT_ID_KEY = "soulsync_client_id";
 
+const getBackendUrl = () => import.meta.env.VITE_BACKEND_URL || "";
+
 function getClientId(): string {
   let id = localStorage.getItem(CLIENT_ID_KEY);
   if (!id) {
@@ -27,7 +29,7 @@ export function useDbLoad() {
 
     const clientId = getClientId();
 
-    fetch(`/api/sync/${encodeURIComponent(clientId)}`)
+    fetch(`${getBackendUrl()}/api/sync/${encodeURIComponent(clientId)}`)
       .then(r => r.ok ? r.json() : null)
       .then((data) => {
         if (!data) return;
@@ -86,7 +88,7 @@ export function useDbSync() {
 
     if (!user) return; // don't sync until onboarding is done
 
-    fetch("/api/sync", {
+    fetch(`${getBackendUrl()}/api/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -130,7 +132,7 @@ export function useDbSync() {
 // ── Save a single chat message to DB ─────────────────────────────────────────
 export function saveChatMessage(role: string, content: string, msgTime: string) {
   const clientId = getClientId();
-  fetch("/api/sync/chat", {
+  fetch(`${getBackendUrl()}/api/sync/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clientId, role, content, msgTime }),
@@ -140,7 +142,7 @@ export function saveChatMessage(role: string, content: string, msgTime: string) 
 // ── Log a mood entry ──────────────────────────────────────────────────────────
 export function logMood(mood: string, emotion?: string, intensity?: number, note?: string) {
   const clientId = getClientId();
-  fetch("/api/sync/mood", {
+  fetch(`${getBackendUrl()}/api/sync/mood`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clientId, mood, emotion, intensity, note }),

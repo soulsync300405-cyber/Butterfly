@@ -2211,33 +2211,42 @@ function PsychTab({ socket }: { socket: Socket | null }) {
           const msgs = getMessages(p.id);
           const unread = msgs.filter(m => m.role === "psych").length;
           return (
-            <motion.div key={p.id} whileHover={{ y: -2 }}
-              className="bg-card border border-border rounded-2xl p-5 space-y-4">
-              <div className="flex items-start gap-4">
+            <motion.div key={p.id} whileHover={{ y: -4 }}
+              className="bg-card border border-border/80 hover:border-primary/40 rounded-3xl p-6 space-y-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              <div className="flex items-start gap-4 relative z-10">
                 <div className="relative">
-                  <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-xl font-black text-primary flex-shrink-0">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary/10 to-primary/5 border border-primary/20 flex items-center justify-center text-xl font-bold text-primary flex-shrink-0 transition-transform duration-300 group-hover:scale-105">
                     {p.avatar}
                   </div>
                   {unread > 0 && (
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+                    <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center animate-bounce border-2 border-card">
                       <span className="text-[9px] text-primary-foreground font-bold">{unread}</span>
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-foreground font-serif">{p.name}</h3>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${p.available ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-bold text-foreground font-serif text-base">{p.name}</h3>
+                    <span className={`inline-flex items-center gap-1.5 text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${p.available ? "bg-green-500/10 text-green-600 border-green-500/20" : "bg-muted text-muted-foreground border-border"}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${p.available ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`} />
                       {p.available ? "Available" : "Busy"}
                     </span>
                   </div>
-                  <p className="text-muted-foreground text-sm">{p.specialization}</p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Star size={11} className="text-amber-500" /> {p.rating}</span>
-                    <span>{p.sessions} sessions</span>
+                  <p className="text-muted-foreground text-sm mt-0.5">{p.specialization}</p>
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1 font-semibold text-foreground">
+                      <Star size={12} className="text-amber-500 fill-amber-500" /> {p.rating}
+                    </span>
+                    <span>·</span>
+                    <span>{p.sessions} sessions completed</span>
                   </div>
-                  <div className="flex gap-1 mt-1.5 flex-wrap">
-                    {p.languages.map(l => <span key={l} className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{l}</span>)}
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {p.languages.map(l => (
+                      <span key={l} className="text-[10px] px-2 py-0.5 rounded-lg bg-muted/60 text-muted-foreground font-medium border border-border/40">
+                        {l}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -2245,26 +2254,26 @@ function PsychTab({ socket }: { socket: Socket | null }) {
               {/* Booking confirmation badge */}
               {booking && (
                 <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2.5">
+                  className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 relative z-10">
                   <CheckCircle size={15} className="text-primary flex-shrink-0" />
                   <div>
-                    <p className="text-xs font-semibold text-foreground">Session booked</p>
-                    <p className="text-[10px] text-muted-foreground">{booking.slot}</p>
+                    <p className="text-xs font-semibold text-foreground">Session Booked</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">{booking.slot}</p>
                   </div>
                   <button onClick={() => removePsychBooking(p.id)}
-                    className="ml-auto text-muted-foreground hover:text-foreground">
+                    className="ml-auto text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted transition-colors">
                     <X size={12} />
                   </button>
                 </motion.div>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 relative z-10">
                 <button
                   onClick={() => p.available && call.status === "idle" && call.dial(p.name)}
                   disabled={!p.available || call.status !== "idle"}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex-grow flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold transition-all shadow-sm shadow-primary/5 ${
                     p.available && call.status === "idle"
-                      ? "bg-primary text-primary-foreground hover:opacity-90"
+                      ? "bg-primary text-primary-foreground hover:opacity-95 cursor-pointer"
                       : "bg-muted text-muted-foreground cursor-not-allowed"
                   }`}>
                   {call.status === "ringing" ? (
@@ -2276,14 +2285,14 @@ function PsychTab({ socket }: { socket: Socket | null }) {
                   )}
                 </button>
                 <button onClick={() => setBookPsych(p)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-all ${booking ? "border-primary/30 bg-primary/5 text-primary" : "border-border text-foreground hover:bg-muted/50"}`}>
+                  className={`flex-grow flex items-center justify-center gap-2 py-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${booking ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10" : "border-border text-foreground hover:bg-muted/50"}`}>
                   <Calendar size={13} /> {booking ? "Rebook" : "Book Session"}
                 </button>
                 <button onClick={() => setMsgPsych(p)}
-                  className="relative px-3 py-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                  <MessageCircle size={14} />
+                  className="relative px-4 py-3 rounded-2xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all cursor-pointer flex items-center justify-center">
+                  <MessageCircle size={15} />
                   {unread > 0 && (
-                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-primary rounded-full" />
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-primary rounded-full border-2 border-card" />
                   )}
                 </button>
               </div>

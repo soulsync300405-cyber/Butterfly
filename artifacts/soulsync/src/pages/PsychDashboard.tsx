@@ -53,8 +53,8 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
       <aside className="w-60 flex-shrink-0 bg-card border-r border-border flex flex-col">
         <div className="px-4 py-5 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
-              <Shield size={18} className="text-amber-600" />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+              <Shield size={18} className="text-primary" />
             </div>
             <div className="min-w-0">
               <p className="text-foreground font-bold text-sm font-serif">Clinical Portal</p>
@@ -66,9 +66,9 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
           {NAV.map(item => (
             <button key={item.id} onClick={() => setTab(item.id as PsychTab)}
               data-testid={`nav-psych-${item.id}`}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm border border-transparent ${
                 tab === item.id
-                  ? "bg-amber-500/15 text-amber-700 border border-amber-500/25 font-semibold"
+                  ? "bg-primary/10 text-primary border-primary/15 font-bold shadow-sm shadow-primary/5"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               }`}>
               <item.icon size={15} />
@@ -142,8 +142,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
                 </motion.button>
                 <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.95 }}
                   onClick={() => psychCall.accept()}
-                  className="flex-1 py-3 rounded-2xl text-white text-sm font-bold"
-                  style={{ background: "linear-gradient(135deg, #3A7A52 0%, #2d6142 100%)" }}>
+                  className="flex-1 py-3 rounded-2xl text-primary-foreground text-sm font-bold bg-gradient-to-r from-primary to-primary/80 hover:opacity-95 transition-all shadow-md shadow-primary/10">
                   <Phone size={14} className="inline mr-1.5" /> Accept
                 </motion.button>
               </div>
@@ -328,11 +327,11 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
             return (
               <motion.button key={psychId} onClick={() => { openConversation(psychId); setActiveStudentName(null); }}
                 whileHover={{ backgroundColor: "hsl(var(--muted)/0.5)" }}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all ${isActive ? "bg-amber-50 border-r-2 border-amber-500" : ""}`}>
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all ${isActive ? "bg-primary/5 border-r-2 border-primary" : ""}`}>
                 <div className="relative flex-shrink-0">
                   <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black border ${
                     patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
-                    : patient.status === "MODERATE" ? "bg-amber-100 text-amber-700 border-amber-300"
+                    : patient.status === "MODERATE" ? "bg-accent/10 text-accent border-accent/20"
                     : "bg-green-100 text-green-700 border-green-300"
                   }`}>
                     {patient.avatar}
@@ -396,14 +395,14 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
               <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                 className={`flex gap-3 ${msg.fromRole === "psych" ? "flex-row-reverse" : ""}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-auto border ${
-                  msg.fromRole === "user" ? "bg-primary/10 text-primary border-primary/20" : "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                  msg.fromRole === "user" ? "bg-primary/10 text-primary border-primary/20" : "bg-primary/10 text-primary border-primary/20"
                 }`}>
                   {msg.fromRole === "user" ? activeStudentName.slice(0, 2).toUpperCase() : "DR"}
                 </div>
                 <div className={`flex flex-col gap-1 max-w-[72%] ${msg.fromRole === "psych" ? "items-end" : "items-start"}`}>
                   <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                     msg.fromRole === "psych"
-                      ? "bg-amber-500 text-white rounded-tr-sm shadow-sm"
+                      ? "bg-primary text-primary-foreground rounded-tr-sm shadow-sm"
                       : "bg-card border border-border text-foreground rounded-tl-sm"
                   }`}>{msg.text}</div>
                   <span className="text-[10px] text-muted-foreground px-1">{msg.time}</span>
@@ -420,7 +419,7 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
                 className="flex-1 bg-transparent text-foreground placeholder-muted-foreground text-sm focus:outline-none"
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendReply()} />
               <motion.button onClick={sendReply} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.93 }}
-                className={`p-2 rounded-xl transition-all ${input.trim() ? "bg-amber-500 text-white hover:bg-amber-600" : "text-muted-foreground"}`}>
+                className={`p-2 rounded-xl transition-all ${input.trim() ? "bg-primary text-primary-foreground hover:opacity-95" : "text-muted-foreground"}`}>
                 <Send size={15} />
               </motion.button>
             </div>
@@ -440,7 +439,7 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
             </button>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border flex-shrink-0 ${
               activeConvo.patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
-              : activeConvo.patient.status === "MODERATE" ? "bg-amber-100 text-amber-700 border-amber-300"
+              : activeConvo.patient.status === "MODERATE" ? "bg-accent/10 text-accent border-accent/20"
               : "bg-green-100 text-green-700 border-green-300"
             }`}>
               {activeConvo.patient.avatar}
@@ -453,7 +452,7 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
                 <span>{activeConvo.patient.tags.join(", ")}</span>
                 <span className={`font-semibold ${
                   activeConvo.patient.riskScore > 70 ? "text-destructive"
-                  : activeConvo.patient.riskScore > 50 ? "text-amber-600"
+                  : activeConvo.patient.riskScore > 50 ? "text-accent"
                   : "text-green-600"
                 }`}>Risk {activeConvo.patient.riskScore}%</span>
               </div>
@@ -489,15 +488,15 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-auto border ${
                     msg.role === "student"
                       ? activeConvo.patient.status === "CRITICAL" ? "bg-destructive/10 text-destructive border-destructive/30"
-                        : "bg-amber-100 text-amber-700 border-amber-300"
-                      : "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                        : "bg-accent/10 text-accent border-accent/20"
+                      : "bg-primary/10 text-primary border-primary/20"
                   }`}>
                     {msg.role === "student" ? activeConvo.patient.avatar : "DR"}
                   </div>
                   <div className={`flex flex-col gap-1 max-w-[72%] ${msg.role === "psych" ? "items-end" : "items-start"}`}>
                     <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                       msg.role === "psych"
-                        ? "bg-amber-500 text-white rounded-tr-sm shadow-sm shadow-amber-500/20"
+                        ? "bg-primary text-primary-foreground rounded-tr-sm shadow-sm shadow-primary/10"
                         : "bg-card border border-border text-foreground rounded-tl-sm"
                     }`}>
                       {msg.text}
@@ -521,7 +520,7 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
                 "I'm reviewing your notes now.",
               ].map(chip => (
                 <button key={chip} onClick={() => setInput(chip)}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 border border-transparent transition-all">
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/20 border border-transparent transition-all">
                   {chip}
                 </button>
               ))}
@@ -535,7 +534,7 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendReply()}
               />
               <motion.button onClick={sendReply} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.93 }}
-                className={`p-2 rounded-xl transition-all ${input.trim() ? "bg-amber-500 text-white hover:bg-amber-600" : "text-muted-foreground"}`}>
+                className={`p-2 rounded-xl transition-all ${input.trim() ? "bg-primary text-primary-foreground hover:opacity-95" : "text-muted-foreground"}`}>
                 <Send size={15} />
               </motion.button>
             </div>
@@ -545,8 +544,8 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
       ) : (
         /* Empty state when no conversation selected on wide screen */
         <div className="hidden sm:flex flex-1 items-center justify-center flex-col gap-4 text-center p-8">
-          <div className="w-20 h-20 rounded-3xl bg-amber-50 border border-amber-200 flex items-center justify-center">
-            <Inbox size={36} className="text-amber-500" />
+          <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Inbox size={36} className="text-primary" />
           </div>
           <div>
             <p className="text-xl font-black font-serif text-foreground">Select a conversation</p>
@@ -580,7 +579,7 @@ function TriageTab({ selectedPatient, setSelectedPatient }: {
 
   const statusColor = (s: string) =>
     s === "CRITICAL" ? "text-destructive bg-destructive/10 border-destructive/30" :
-    s === "MODERATE" ? "text-amber-700 bg-amber-100 border-amber-300" :
+    s === "MODERATE" ? "text-accent bg-accent/10 border-accent/20" :
     "text-green-700 bg-green-100 border-green-300";
 
   return (
@@ -593,7 +592,7 @@ function TriageTab({ selectedPatient, setSelectedPatient }: {
           { label: "Total Patients", value: PATIENTS.length, icon: Users, color: "text-primary", bg: "bg-primary/10" },
           { label: "Critical Alerts", value: critical, icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10", pulse: critical > 0 },
           { label: "Active Sessions", value: 2, icon: Activity, color: "text-green-600", bg: "bg-green-100" },
-          { label: "Avg Risk Score", value: `${Math.round(PATIENTS.reduce((a, b) => a + b.riskScore, 0) / PATIENTS.length)}%`, icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-100" },
+          { label: "Avg Risk Score", value: `${Math.round(PATIENTS.reduce((a, b) => a + b.riskScore, 0) / PATIENTS.length)}%`, icon: TrendingUp, color: "text-accent", bg: "bg-accent/10" },
         ].map(stat => (
           <div key={stat.label} className="bg-card border border-border rounded-2xl p-4">
             <div className="flex items-center justify-between mb-2">
@@ -620,7 +619,7 @@ function TriageTab({ selectedPatient, setSelectedPatient }: {
               <button key={f} onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${filter === f
                   ? f === "CRITICAL" ? "bg-destructive/15 text-destructive border border-destructive/40"
-                  : f === "MODERATE" ? "bg-amber-100 text-amber-700 border border-amber-300"
+                  : f === "MODERATE" ? "bg-accent/10 text-accent border border-accent/20"
                   : f === "STABLE" ? "bg-green-100 text-green-700 border border-green-300"
                   : "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
@@ -854,10 +853,10 @@ function PatientModal({ patient, note, onSaveNote, onClose, onCall }: {
           <div className="flex gap-2">
             <input value={overrideMsg} onChange={e => setOverrideMsg(e.target.value)}
               placeholder="Override session message..."
-              className="flex-1 text-xs px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 placeholder-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              className="flex-1 text-xs px-3 py-2 rounded-xl border border-accent/30 bg-accent/5 text-accent placeholder-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/40"
               onKeyDown={e => e.key === "Enter" && sendOverride()}
             />
-            <button onClick={sendOverride} className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-semibold hover:bg-amber-600 transition-colors flex items-center gap-1">
+            <button onClick={sendOverride} className="px-4 py-2 bg-accent text-accent-foreground rounded-xl text-xs font-semibold hover:opacity-95 transition-all flex items-center gap-1">
               <Zap size={12} /> Override
             </button>
             {overrideSent && <span className="flex items-center gap-1 text-xs text-green-600"><CheckCircle size={12} /> Sent</span>}
@@ -905,7 +904,7 @@ function AnalyticsTab() {
           { label: "Sessions This Week", value: "29", icon: Activity, color: "text-primary" },
           { label: "Avg Session Length", value: "43m", icon: Clock, color: "text-blue-500" },
           { label: "Improvement Rate", value: "78%", icon: TrendingUp, color: "text-green-600" },
-          { label: "Active Patients", value: "4", icon: Users, color: "text-amber-600" },
+          { label: "Active Patients", value: "4", icon: Users, color: "text-primary" },
         ].map(stat => (
           <div key={stat.label} className="bg-card border border-border rounded-2xl p-4">
             <stat.icon size={18} className={`${stat.color} mb-2`} />
@@ -1111,7 +1110,7 @@ function PsychSettingsTab({ licenseId }: { licenseId: string }) {
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
     <button onClick={() => onChange(!value)}
-      className={`w-11 h-6 rounded-full relative transition-all ${value ? "bg-amber-500" : "bg-muted"}`}>
+      className={`w-11 h-6 rounded-full relative transition-all ${value ? "bg-primary" : "bg-muted"}`}>
       <motion.div animate={{ x: value ? 23 : 2 }} className="absolute top-1 w-4 h-4 bg-white rounded-full shadow" />
     </button>
   );
@@ -1135,7 +1134,7 @@ function PsychSettingsTab({ licenseId }: { licenseId: string }) {
         </div>
         <div className="p-5 space-y-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 text-xl font-black">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xl font-black">
               {licenseId.slice(0, 2).toUpperCase()}
             </div>
             <div>
@@ -1189,7 +1188,7 @@ function PsychSettingsTab({ licenseId }: { licenseId: string }) {
       </div>
 
       <button onClick={save}
-        className="w-full py-3.5 rounded-2xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20">
+        className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold hover:opacity-95 transition-colors shadow-lg shadow-primary/20">
         Save Settings
       </button>
     </div>
