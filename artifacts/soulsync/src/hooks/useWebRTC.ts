@@ -1,4 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { ref, set, onValue, off, push, onChildAdded, remove, get } from "firebase/database";
+import { db } from "@/lib/firebase";
+import { useClientId } from "@/hooks/useDbSync";
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -16,11 +19,11 @@ export function useWebRTC(roomId: string, localStream: MediaStream | null) {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [remotePeerId, setRemotePeerId] = useState<string | null>(null);
 
-  const socketRef = useRef<any>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const clientId = useClientId() || "user_" + Math.random().toString(36).substring(7);
 
-  const createPeerConnection = useCallback((peerId: string) => {
+  const createPeerConnection = useCallback(() => {
     if (!hasWebRTC) return null;
     try {
       remoteStreamRef.current = new MediaStream();
@@ -42,11 +45,9 @@ export function useWebRTC(roomId: string, localStream: MediaStream | null) {
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit("ice-candidate", {
-            to: peerId,
-            candidate: event.candidate.toJSON(),
-          });
+        if (event.candidate) {
+          const iceRef = ref(db, `calls/${roomId}/iceCandidates/user`);
+          push(iceRef, event.candidate.toJSON());
         }
       };
 
@@ -60,99 +61,74 @@ export function useWebRTC(roomId: string, localStream: MediaStream | null) {
       setStatus("error");
       return null;
     }
-  }, [localStream]);
+  }, [localStream, roomId]);
 
   const connect = useCallback(async () => {
     if (!hasWebRTC) { setStatus("unavailable"); return; }
-
     setStatus("connecting");
 
-    // Dynamically import socket.io-client to avoid load-time crash
-    let io: any;
-    try {
-      const mod = await import("socket.io-client");
-      io = mod.io;
-    } catch {
-      setStatus("error");
-      return;
-    }
+    const pc = createPeerConnection();
+    if (!pc) return;
 
     try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || "";
-      const socket = io(backendUrl, { path: "/api/socket.io", transports: ["websocket", "polling"] });
-      socketRef.current = socket;
-
-      socket.on("connect", () => {
-        socket.emit("join-room", roomId);
+      // Create Offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      
+      const callRef = ref(db, `calls/${roomId}`);
+      await set(callRef, {
+        offer: {
+          type: offer.type,
+          sdp: offer.sdp,
+          from: clientId
+        },
+        status: "ringing"
       });
 
-      socket.on("connect_error", () => {
-        setStatus("error");
-      });
-
-      socket.on("room-users", async (users: string[]) => {
-        if (users.length > 0) {
-          const peerId = users[0];
-          setRemotePeerId(peerId);
-          const pc = createPeerConnection(peerId);
-          if (!pc) return;
-
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit("offer", { to: peerId, offer });
-          } catch { setStatus("error"); }
+      // Listen for Answer
+      const answerRef = ref(db, `calls/${roomId}/answer`);
+      onValue(answerRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data && !pc.currentRemoteDescription) {
+          pc.setRemoteDescription(new RTCSessionDescription(data))
+            .catch(() => setStatus("error"));
+          setRemotePeerId(data.from || "psychologist");
         }
       });
 
-      socket.on("user-joined", (peerId: string) => {
-        setRemotePeerId(peerId);
+      // Listen for Remote ICE candidates
+      const remoteIceRef = ref(db, `calls/${roomId}/iceCandidates/psych`);
+      onChildAdded(remoteIceRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          pc.addIceCandidate(new RTCIceCandidate(data)).catch(() => {});
+        }
       });
 
-      socket.on("offer", async ({ from, offer }: { from: string; offer: RTCSessionDescriptionInit }) => {
-        const pc = createPeerConnection(from);
-        if (!pc) return;
-        setRemotePeerId(from);
-
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit("answer", { to: from, answer });
-        } catch { setStatus("error"); }
+      // Listen for Call End
+      const statusRef = ref(db, `calls/${roomId}/status`);
+      onValue(statusRef, (snapshot) => {
+        if (snapshot.val() === "ended") {
+          setStatus("disconnected");
+          disconnect();
+        }
       });
 
-      socket.on("answer", async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
-        try {
-          if (pcRef.current?.signalingState === "have-local-offer") {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-          }
-        } catch { }
-      });
-
-      socket.on("ice-candidate", async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
-        try {
-          if (pcRef.current?.remoteDescription) {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          }
-        } catch { }
-      });
-
-      socket.on("user-left", () => { setStatus("disconnected"); setRemoteStream(null); });
-      socket.on("call-ended", () => { setStatus("disconnected"); disconnect(); });
-
-    } catch {
+    } catch (err) {
       setStatus("error");
     }
-  }, [roomId, createPeerConnection]);
+  }, [roomId, createPeerConnection, clientId]);
 
   const disconnect = useCallback(() => {
     try {
-      if (socketRef.current) {
-        socketRef.current.emit("end-call", roomId);
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
+      const statusRef = ref(db, `calls/${roomId}/status`);
+      set(statusRef, "ended");
+      
+      // Cleanup Firebase listeners
+      off(ref(db, `calls/${roomId}/answer`));
+      off(ref(db, `calls/${roomId}/iceCandidates/psych`));
+      off(ref(db, `calls/${roomId}/status`));
+
       pcRef.current?.close();
       pcRef.current = null;
       remoteStreamRef.current = null;

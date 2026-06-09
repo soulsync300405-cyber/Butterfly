@@ -14,10 +14,10 @@ import { CallUI } from "@/components/CallUI";
 import { LiveCallModal } from "@/components/LiveCallModal";
 import { AntigravityCanvas } from "@/components/AntigravityCanvas";
 import { useStore } from "@/lib/store";
-import { useRegisterSocket } from "@/hooks/useSocket";
 import { useStudentCall } from "@/hooks/useStudentCall";
 import { saveChatMessage } from "@/hooks/useDbSync";
-import type { Socket } from "socket.io-client";
+import { ref, push, onChildAdded, off } from "firebase/database";
+import { db } from "@/lib/firebase";
 import {
   QUESTS, COURSES, PSYCHOLOGISTS, MOOD_DATA, ASHA_RESPONSES, SCHEDULE_SLOTS
 } from "@/lib/data";
@@ -43,7 +43,6 @@ const NAV: NavItem[] = [
 export function StudentApp({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState("chat");
   const { user, companion, completedQuests, settings } = useStore();
-  const socket = useRegisterSocket("user", user?.name || "Anonymous");
   const [playingCourse, setPlayingCourse] = useState<typeof COURSES[0] | null>(null);
 
   return (
@@ -113,7 +112,7 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
             {tab === "quests" && <QuestsTab />}
             {tab === "learn" && <LearnTab playing={playingCourse} setPlaying={setPlayingCourse} />}
             {tab === "scan" && <ScanTab setTab={setTab} setPlayingCourse={setPlayingCourse} />}
-            {tab === "psych" && <PsychTab socket={socket} />}
+            {tab === "psych" && <PsychTab />}
             {tab === "analytics" && <AnalyticsTab />}
             {tab === "settings" && <SettingsTab />}
           </motion.div>
@@ -2154,38 +2153,47 @@ function BookingModal({
 }
 
 // ─── PSYCH TAB ───────────────────────────────────────────────────────────────
-function PsychTab({ socket }: { socket: Socket | null }) {
+function PsychTab() {
+  const { user, psychMessages, addPsychMessage, psychBookings, setPsychBooking, removePsychBooking } = useStore();
   const [msgPsych, setMsgPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
   const [bookPsych, setBookPsych] = useState<typeof PSYCHOLOGISTS[0] | null>(null);
-  const { user, psychMessages, addPsychMessage, psychBookings, setPsychBooking, removePsychBooking } = useStore();
 
-  const call = useStudentCall(socket, user?.name || "Anonymous");
+  const call = useStudentCall(user?.name || "Anonymous");
 
   const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const sendMessage = (pid: number, text: string, psychName: string) => {
-    const msg = { id: Date.now(), role: "student" as const, text, time: getTime() };
+    const time = getTime();
+    const msg = { id: Date.now(), role: "student" as const, text, time };
     addPsychMessage(pid, msg);
-    socket?.emit("dm-send", {
+
+    push(ref(db, 'dms'), {
       toName: psychName,
       text,
       fromName: user?.name || "Anonymous",
       fromRole: "user",
+      time
     });
   };
 
   useEffect(() => {
-    if (!socket) return;
-    const handler = (dm: { id: number; fromName: string; fromRole: string; text: string; time: string }) => {
-      if (dm.fromRole !== "psych") return;
-      const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
-      if (psych) {
-        addPsychMessage(psych.id, { id: dm.id, role: "psych", text: dm.text, time: dm.time });
+    const dmsRef = ref(db, `dms`);
+    const unsubscribe = onChildAdded(dmsRef, (snapshot) => {
+      const dm = snapshot.val();
+      if (dm && dm.fromRole === "psych" && dm.toName === (user?.name || "Anonymous")) {
+        const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
+        if (psych) {
+          addPsychMessage(psych.id, {
+            id: dm.id || Date.now(),
+            role: "psych",
+            text: dm.text,
+            time: dm.time || getTime(),
+          });
+        }
       }
-    };
-    socket.on("dm-receive", handler);
-    return () => { socket.off("dm-receive", handler); };
-  }, [socket, addPsychMessage]);
+    });
+    return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+  }, [addPsychMessage, user?.name]);
 
   const handleBook = (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => {
     if (!bookPsych) return;

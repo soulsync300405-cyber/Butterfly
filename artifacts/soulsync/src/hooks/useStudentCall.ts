@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { Socket } from "socket.io-client";
+import { ref, set, onValue, off, push, onChildAdded, remove, get } from "firebase/database";
+import { db } from "@/lib/firebase";
+import { useClientId } from "@/hooks/useDbSync";
 
 export type StudentCallStatus =
   | "idle"
-  | "ringing"       // waiting for psych to pick up
-  | "no-psych"      // no psych available
-  | "declined"      // psych declined
-  | "connecting"    // call accepted, setting up WebRTC
-  | "active"        // live call
-  | "ended";        // call ended
+  | "ringing"
+  | "no-psych"
+  | "declined"
+  | "connecting"
+  | "active"
+  | "ended";
 
 export interface LiveMsg {
   id: number;
@@ -31,11 +33,11 @@ async function getStream(): Promise<MediaStream | null> {
   }
 }
 
-export function useStudentCall(socket: Socket | null, userName: string) {
+export function useStudentCall(userName: string) {
   const [status, setStatus]           = useState<StudentCallStatus>("idle");
   const [roomId, setRoomId]           = useState("");
   const [peerName, setPeerName]       = useState("");
-  const [peerId, setPeerId]           = useState("");  // psychologist's socket ID
+  const [peerId, setPeerId]           = useState("");
   const [messages, setMessages]       = useState<LiveMsg[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -43,9 +45,10 @@ export function useStudentCall(socket: Socket | null, userName: string) {
   const pcRef          = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteRef      = useRef<MediaStream>(new MediaStream());
+  
+  const clientId       = useClientId() || "user_" + Math.random().toString(36).substring(7);
 
-  // ── WebRTC setup (student is always the INITIATOR) ────────────────────────
-  const setupPC = useCallback((psychSocketId: string, stream: MediaStream | null) => {
+  const setupPC = useCallback((stream: MediaStream | null, rid: string) => {
     const pc = new RTCPeerConnection({ iceServers: ICE });
     pcRef.current = pc;
 
@@ -57,18 +60,22 @@ export function useStudentCall(socket: Socket | null, userName: string) {
     };
 
     pc.onicecandidate = (e) => {
-      if (e.candidate && socket) {
-        socket.emit("ice-candidate", { to: psychSocketId, candidate: e.candidate.toJSON() });
+      if (e.candidate) {
+        const iceRef = ref(db, `calls/${rid}/iceCandidates/user`);
+        push(iceRef, e.candidate.toJSON());
       }
     };
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") setStatus("active");
-      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") cleanup();
+      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        setStatus("ended");
+        cleanup();
+      }
     };
 
     return pc;
-  }, [socket]);
+  }, []);
 
   const cleanup = useCallback(() => {
     pcRef.current?.close();
@@ -84,105 +91,121 @@ export function useStudentCall(socket: Socket | null, userName: string) {
     setPeerId("");
   }, []);
 
-  // ── Dial ─────────────────────────────────────────────────────────────────
-  const dial = useCallback((psychName?: string) => {
-    if (!socket || status !== "idle") return;
+  const dial = useCallback(async (psychName?: string) => {
+    if (status !== "idle") return;
     setStatus("ringing");
-    socket.emit("dial-psychologist", { userName, psychName });
-  }, [socket, status, userName]);
+
+    // Create a new room ID
+    const newRoomId = `room_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    setRoomId(newRoomId);
+    setPeerName(psychName || "Psychologist");
+
+    const callRef = ref(db, `calls/${newRoomId}`);
+    
+    // We haven't created the offer yet, just signaling ringing
+    await set(callRef, {
+      status: "ringing",
+      offer: { from: clientId } // Just to let psych know who is calling
+    });
+
+    // Listen to status changes
+    const statusRef = ref(db, `calls/${newRoomId}/status`);
+    onValue(statusRef, async (snapshot) => {
+      const currentStatus = snapshot.val();
+      
+      if (currentStatus === "declined") {
+        setStatus("declined");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 3000);
+        return;
+      }
+      
+      if (currentStatus === "ended") {
+        setStatus("ended");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 2500);
+        return;
+      }
+
+      if (currentStatus === "active" && !pcRef.current) {
+        setStatus("connecting");
+
+        // Fetch psychId
+        const psychIdSnapshot = await get(ref(db, `calls/${newRoomId}/psychId`));
+        const pId = psychIdSnapshot.val();
+        setPeerId(pId || "psychologist");
+
+        const stream = await getStream();
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+
+        const pc = setupPC(stream, newRoomId);
+
+        // Create Offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        await set(ref(db, `calls/${newRoomId}/offer`), {
+          type: offer.type,
+          sdp: offer.sdp,
+          from: clientId
+        });
+
+        // Listen for Answer
+        const answerRef = ref(db, `calls/${newRoomId}/answer`);
+        onValue(answerRef, async (ansSnapshot) => {
+          const ansData = ansSnapshot.val();
+          if (ansData && pc.signalingState === "have-local-offer") {
+            await pc.setRemoteDescription(new RTCSessionDescription(ansData));
+            setStatus("active");
+          }
+        });
+
+        // Listen for remote ICE candidates
+        const remoteIceRef = ref(db, `calls/${newRoomId}/iceCandidates/psych`);
+        onChildAdded(remoteIceRef, (iceSnapshot) => {
+          const iceData = iceSnapshot.val();
+          if (iceData) pc.addIceCandidate(new RTCIceCandidate(iceData)).catch(() => {});
+        });
+
+        // Listen for chat
+        const chatRef = ref(db, `calls/${newRoomId}/chat`);
+        onChildAdded(chatRef, (chatSnapshot) => {
+          const msgData = chatSnapshot.val();
+          if (msgData) setMessages(prev => [...prev, msgData]);
+        });
+      }
+    });
+
+    // Timeout if no one picks up in 30 seconds
+    setTimeout(async () => {
+      const currentSnap = await get(statusRef);
+      if (currentSnap.val() === "ringing") {
+        await set(statusRef, "no-psych");
+        setStatus("no-psych");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 4000);
+      }
+    }, 30000);
+
+  }, [status, clientId, setupPC, cleanup]);
 
   const endCall = useCallback(() => {
-    if (socket && roomId) socket.emit("end-call", { roomId });
+    if (roomId) set(ref(db, `calls/${roomId}/status`), "ended");
     cleanup();
     setStatus("ended");
     setTimeout(() => setStatus("idle"), 2000);
-  }, [socket, roomId, cleanup]);
+  }, [roomId, cleanup]);
 
   const sendMessage = useCallback((text: string) => {
-    if (!socket || !roomId || !text.trim()) return;
-    socket.emit("chat-message", { roomId, text: text.trim(), role: "user", sender: userName });
-  }, [socket, roomId, userName]);
+    if (!roomId || !text.trim()) return;
+    const chatRef = ref(db, `calls/${roomId}/chat`);
+    push(chatRef, { role: "user", text: text.trim(), sender: userName });
+  }, [roomId, userName]);
 
-  // ── Socket event handlers ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!socket) return;
-
-    const onRinging = ({ roomId: rid, psychName: pName }: { roomId: string; psychName: string; psychSocketId: string }) => {
-      setRoomId(rid);
-      setPeerName(pName);
-    };
-
-    const onAccepted = async ({
-      roomId: rid, psychName: pName, psychSocketId: pId,
-    }: { roomId: string; psychName: string; psychSocketId: string }) => {
-      setRoomId(rid);
-      setPeerName(pName);
-      setPeerId(pId);
-      setStatus("connecting");
-
-      const stream = await getStream();
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-
-      const pc = setupPC(pId, stream);
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit("offer", { to: pId, offer });
-    };
-
-    const onDeclined = () => {
-      setStatus("declined");
-      cleanup();
-      setTimeout(() => setStatus("idle"), 3000);
-    };
-
-    const onNoPsych = () => {
-      setStatus("no-psych");
-      setTimeout(() => setStatus("idle"), 4000);
-    };
-
-    const onAnswer = async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
-      if (pcRef.current?.signalingState === "have-local-offer") {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        setStatus("active");
-      }
-    };
-
-    const onIce = async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
-      try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); } catch { }
-    };
-
-    const onChatMsg = (msg: LiveMsg) => {
-      setMessages(prev => [...prev, msg]);
-    };
-
-    const onCallEnded = () => {
-      cleanup();
-      setStatus("ended");
-      setTimeout(() => setStatus("idle"), 2500);
-    };
-
-    socket.on("call-ringing", onRinging);
-    socket.on("call-accepted", onAccepted);
-    socket.on("call-declined", onDeclined);
-    socket.on("no-psych-available", onNoPsych);
-    socket.on("answer", onAnswer);
-    socket.on("ice-candidate", onIce);
-    socket.on("chat-message", onChatMsg);
-    socket.on("call-ended", onCallEnded);
-
-    return () => {
-      socket.off("call-ringing", onRinging);
-      socket.off("call-accepted", onAccepted);
-      socket.off("call-declined", onDeclined);
-      socket.off("no-psych-available", onNoPsych);
-      socket.off("answer", onAnswer);
-      socket.off("ice-candidate", onIce);
-      socket.off("chat-message", onChatMsg);
-      socket.off("call-ended", onCallEnded);
-    };
-  }, [socket, cleanup, setupPC]);
+    return () => cleanup();
+  }, [cleanup]);
 
   return {
     status, roomId, peerName, peerId,

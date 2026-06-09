@@ -13,6 +13,8 @@ import { useStore } from "@/lib/store";
 import type { SharedMessage } from "@/lib/store";
 import { useRegisterSocket } from "@/hooks/useSocket";
 import { usePsychCall } from "@/hooks/usePsychCall";
+import { ref, push, onChildAdded, off } from "firebase/database";
+import { db } from "@/lib/firebase";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
@@ -26,8 +28,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
   const [notifications, setNotifications] = useState(NOTIFICATIONS);
   const { psychMessages, psychLastRead } = useStore();
 
-  const socket = useRegisterSocket("psychologist", "Dr. Priya Iyer");
-  const psychCall = usePsychCall(socket);
+  const psychCall = usePsychCall();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -94,7 +95,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
             exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }}
             className={tab === "messages" ? "h-full" : "min-h-full"}>
             {tab === "triage"        && <TriageTab selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} />}
-            {tab === "messages"      && <MessagesTab socket={socket} />}
+            {tab === "messages"      && <MessagesTab />}
             {tab === "analytics"     && <AnalyticsTab />}
             {tab === "reports"       && <ReportsTab />}
             {tab === "notifications" && <NotificationsTab notifications={notifications} setNotifications={setNotifications} />}
@@ -173,7 +174,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
 type LiveDM = { id: number; fromName: string; fromRole: "user" | "psych"; text: string; time: string };
 
 // ─── MESSAGES TAB ─────────────────────────────────────────────────────────────
-function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-client").io> | null }) {
+function MessagesTab() {
   const { psychMessages, addPsychMessage, markPsychRead, psychLastRead } = useStore();
   const [activePsychId, setActivePsychId] = useState<number | null>(null);
   const [activeStudentName, setActiveStudentName] = useState<string | null>(null);
@@ -192,18 +193,19 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
   }, [psychMessages, liveDMs, activePsychId, activeStudentName]);
 
   useEffect(() => {
-    if (!socket) return;
-    const handler = (dm: LiveDM) => {
-      if (dm.fromRole !== "user") return;
-      const studentName = dm.fromName;
-      setLiveDMs(prev => ({
-        ...prev,
-        [studentName]: [...(prev[studentName] || []), dm],
-      }));
-    };
-    socket.on("dm-receive", handler);
-    return () => { socket.off("dm-receive", handler); };
-  }, [socket]);
+    const dmsRef = ref(db, `dms`);
+    const unsubscribe = onChildAdded(dmsRef, (snapshot) => {
+      const dm = snapshot.val();
+      if (dm && dm.fromRole === "user") {
+        const studentName = dm.fromName;
+        setLiveDMs(prev => ({
+          ...prev,
+          [studentName]: [...(prev[studentName] || []), dm],
+        }));
+      }
+    });
+    return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+  }, []);
 
   const openConversation = (psychId: number, studentName?: string) => {
     setActivePsychId(psychId);
@@ -224,11 +226,12 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
         ...prev,
         [activeStudentName]: [...(prev[activeStudentName] || []), myMsg],
       }));
-      socket?.emit("dm-send", {
+      push(ref(db, 'dms'), {
         toName: activeStudentName,
         text,
         fromName: "Dr. Priya Iyer",
         fromRole: "psych",
+        time: getTime()
       });
       return;
     }
@@ -237,11 +240,12 @@ function MessagesTab({ socket }: { socket: ReturnType<typeof import("socket.io-c
     const patientForPsych = allConversations.find(c => c.psychId === activePsychId);
     addPsychMessage(activePsychId, { id: Date.now(), role: "psych", text, time: getTime() });
     if (patientForPsych) {
-      socket?.emit("dm-send", {
+      push(ref(db, 'dms'), {
         toName: patientForPsych.patient.name,
         text,
         fromName: "Dr. Priya Iyer",
         fromRole: "psych",
+        time: getTime()
       });
     }
   };
