@@ -1,4 +1,3 @@
 {
-  "outputDirectory": "artifacts/soulsync/dist",
-  "framework": "vite"
+  "outputDirectory": "artifacts/soulsync/dist"
 }
