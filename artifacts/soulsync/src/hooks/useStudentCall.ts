@@ -105,6 +105,7 @@ export function useStudentCall(userName: string) {
     // We haven't created the offer yet, just signaling ringing
     await set(callRef, {
       status: "ringing",
+      userName: userName,
       offer: { from: clientId } // Just to let psych know who is calling
     });
 
