@@ -40,7 +40,6 @@ export function MusicPlayer() {
     return () => clearInterval(id);
   }, [playing]);
 
-  useEffect(() => {
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!youtubeSearchQuery.trim()) return;
@@ -50,7 +49,6 @@ export function MusicPlayer() {
     setYoutubeResults(results);
     setIsSearching(false);
   };
-  }, [expanded]);
 
   useEffect(() => {
     if (playing) {
