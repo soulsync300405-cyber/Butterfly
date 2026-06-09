@@ -1287,6 +1287,31 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
       dry: Math.min(dryBase, 100),
       relatable: Math.min(relatableBase, 100)
     });
+
+    // Fetch real Reddit Memes!
+    let subreddit = "Btechtards";
+    if (arch === "Dad Jokes Specialist") subreddit = "dadjokes";
+    else if (arch === "Deadpan Relatable Cynic") subreddit = "me_irl";
+
+    fetch(`https://www.reddit.com/r/${subreddit}/top.json?t=month&limit=15`)
+      .then(res => res.json())
+      .then(data => {
+         const posts = data.data.children
+           .filter((c: any) => !c.data.is_video && c.data.url && (c.data.url.endsWith('.jpg') || c.data.url.endsWith('.png') || c.data.url.endsWith('.gif')))
+           .slice(0, 3)
+           .map((c: any) => ({
+             type: "reddit_image",
+             title: `r/${c.data.subreddit}`,
+             sub: `${c.data.ups} upvotes`,
+             desc: c.data.title,
+             icon: "🔥",
+             url: c.data.url
+           }));
+         setRedditMemes(posts);
+      })
+      .catch(err => {
+         console.error("Reddit fetch err:", err);
+      });
   };
 
   // Real-time joke generator with streaming letters matching the archetype
@@ -1710,7 +1735,7 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
                       <div className="space-y-3">
                         <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-serif">Meme Edits & Reddit compilations:</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                          {getHumorMedia(humorArchetype).map((item, idx) => (
+                          {(redditMemes.length > 0 ? redditMemes : getHumorMedia(humorArchetype)).map((item, idx) => (
                             <button
                               key={idx}
                               onClick={() => setSelectedMedia(item)}
@@ -1793,13 +1818,13 @@ function MediaModal({ item, onClose, companionName }: { item: any; onClose: () =
   }, [isPlaying]);
 
   const getCommentary = () => {
-    if (item.type === "reddit") {
-      return `${companionName}: "Bhai, reddit edits are next level! 😭 Itna accurate kaise ho sakta hai? Pure relatable stress content. Padhai ke alawa sab kuch top-tier hai humara!"`;
+    if (item.type === "reddit" || item.type === "reddit_image") {
+      return `${companionName}: "Bhai, reddit memes are next level! 😭 Itna accurate kaise ho sakta hai? Pure relatable content."`;
     }
     if (item.type === "picture") {
-      return `${companionName}: "Yeh meme dekh kar meri database crash hone wali thi! 😂 Placement biscuit se hi toh hostel chalta hai. Canteen wale bhaiya should be the chief placement officer!"`;
+      return `${companionName}: "Yeh meme dekh kar meri database crash hone wali thi! 😂"`;
     }
-    return `${companionName}: "Yeh video edit toh direct dil par laga! 💀 Warden sir/madam ke room se jo sound waves aate hain, they exceed all safety limits. Perfect bass drop!"`;
+    return `${companionName}: "Yeh video edit toh direct dil par laga! 💀"`;
   };
 
   return (
@@ -1833,7 +1858,12 @@ function MediaModal({ item, onClose, companionName }: { item: any; onClose: () =
 
         {/* Content Area */}
         <div className="p-6 bg-black/40 flex-1 flex flex-col items-center justify-center min-h-[260px] relative">
-          {item.type === "picture" ? (
+          {item.type === "reddit_image" && item.url ? (
+            <div className="w-full h-full flex flex-col items-center justify-center space-y-3">
+              <img src={item.url} alt="Reddit Meme" className="max-w-full max-h-[300px] object-contain rounded-lg shadow-lg border border-white/10" />
+              <p className="text-white text-xs text-center px-4 font-bold">{item.desc}</p>
+            </div>
+          ) : item.type === "picture" ? (
             <div className="w-full max-w-sm bg-black border border-white/10 rounded-2xl overflow-hidden shadow-xl flex flex-col items-center p-4 space-y-4">
               <div className="text-center font-bold text-sm text-white uppercase tracking-wider px-2 font-serif">
                 {item.title}
