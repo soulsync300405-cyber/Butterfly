@@ -438,13 +438,17 @@ function ChatTab() {
 function CompanionCustomizerModal({ onClose }: { onClose: () => void }) {
   const { companion, setCompanion } = useStore();
   const [name, setName] = useState(companion?.name || "Asha");
+  const [description, setDescription] = useState(companion?.description || "");
   const [voiceStyle, setVoiceStyle] = useState(companion?.voiceStyle || "Calm");
   const [tone, setTone] = useState(companion?.tone ?? 50);
   const [creativity, setCreativity] = useState(companion?.creativity ?? 60);
   const [hinglish, setHinglish] = useState(companion?.language === "hinglish");
 
   const save = () => {
-    if (companion) setCompanion({ ...companion, name, voiceStyle, tone, creativity, language: hinglish ? "hinglish" : "english" });
+    setCompanion({
+      ...(companion || { gender: 'female', appearance: 'soft-pastel' }),
+      name, description, voiceStyle, tone, creativity, language: hinglish ? "hinglish" : "english"
+    });
     onClose();
   };
 
@@ -464,6 +468,12 @@ function CompanionCustomizerModal({ onClose }: { onClose: () => void }) {
           <label className="text-sm font-medium text-foreground">Name</label>
           <input value={name} onChange={e => setName(e.target.value)}
             className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-foreground">Custom Prompt / Backstory</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+            placeholder="E.g. A strict math tutor, a poetic philosopher, a gym bro..."
+            className="w-full bg-background border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
         </div>
         {[{ key: "tone", label: "Tone", left: "Empathetic", right: "Goal-Oriented", val: tone, set: setTone },
           { key: "creativity", label: "Creativity", left: "Grounded", right: "Expressive", val: creativity, set: setCreativity }].map(item => (
