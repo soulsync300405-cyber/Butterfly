@@ -16,6 +16,7 @@ import { AntigravityCanvas } from "@/components/AntigravityCanvas";
 import { useStore } from "@/lib/store";
 import { useRegisterSocket } from "@/hooks/useSocket";
 import { useStudentCall } from "@/hooks/useStudentCall";
+import { saveChatMessage } from "@/hooks/useDbSync";
 import type { Socket } from "socket.io-client";
 import {
   QUESTS, COURSES, PSYCHOLOGISTS, MOOD_DATA, ASHA_RESPONSES, SCHEDULE_SLOTS
@@ -124,25 +125,19 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
 
 // ─── CHAT TAB ────────────────────────────────────────────────────────────────
 function ChatTab() {
-  const { companion, user } = useStore();
-  const [messages, setMessages] = useState([
-    { id: 1, role: "ai", text: "Heyy! Good morning ☀️ Aaj uthne ke baad kaisa feel hua pehle? Seedha bol, koi judgment nahi.", time: "9:41", speaking: false },
-    { id: 2, role: "user", text: "Thoda heavy feel ho raha tha. Kal raat fir neend nahi aayi properly", time: "9:42" },
-    { id: 3, role: "ai", text: "Yeh teen din ho gaye jab se tumne mujhe neend ki baat boli hai. Main genuinely concerned hoon 💙 Kya bathroom break ke bina puri raat jaag rahe ho?", time: "9:43", speaking: false },
-    { id: 4, role: "user", text: "Haan yaar. Raat 2 baje tak phone dekhta rehta hoon aur fir anxiety ho jaati hai ki kal ki class miss ho jaayegi", time: "9:44" },
-    { id: 5, role: "ai", text: "Okay ye ek classic loop hai — anxiety → phone → aur zyada anxiety. Ek chota experiment try karein aaj raat? Phone ko 9:30 PM ke baad dusre room mein rakh do. Seedha try karo, kal mujhe batana kaisa raha 🌙", time: "9:45", speaking: false },
-    { id: 6, role: "user", text: "Sach mein koshish karunga. Lekin Asha, aaj Physics ka test hai aur maine sirf ek chapter padha hai", time: "9:47" },
-    { id: 7, role: "ai", text: "Deep breath pehle — seriously, ek second ke liye bas apne haath dekho 🌬️ Ek chapter yaad hai matlab foundation hai. Abhi bata — kaunsa topic sab se zyada shaky lagta hai?", time: "9:48", speaking: false },
-    { id: 8, role: "user", text: "Haan please! Aur mere haath kaamp rahe hain anxiety se", time: "9:49" },
-    { id: 9, role: "ai", text: "Yaar, haath kaanpna matlab body ne adrenaline release kiya — yahi woh energy hai jo actually focus dilaati hai ✨ Abhi sirf ek kaam karo: paani piyo, ek deep breath lo, aur mujhe batao kaunsa topic confident lagta hai.", time: "9:49", speaking: false },
-    { id: 10, role: "user", text: "Thermodynamics ke laws yaad hain mujhe. Numericals thode weak hain", time: "9:51" },
-    { id: 11, role: "ai", text: "Perfect — laws solid hain matlab tumhara core strong hai 💪 Do key formulas ek khaali page pe likh lo abhi, bas recall ke liye. Test ke baad zaroor batana kaisa gaya — main yahan hoon.", time: "9:52", speaking: false },
-    { id: 12, role: "user", text: "Thank you Asha. Pata nahi tumse baat kiye bina kya karta main", time: "9:53" },
-    { id: 13, role: "ai", text: "Sach kahu toh — ye strength tumhare andar thi, main sirf mirror hoon 🌸 Ab jao, conquer karo. Aur seriously — test ke baad update dena, I mean it 🔥", time: "9:53", speaking: false },
-    { id: 14, role: "ai", text: "Haan yaar, main bilkul sun rahi hoon. Aaj kaisa feel ho raha hai — honestly? 😊", time: "10:02", speaking: false },
-    { id: 15, role: "user", text: "Bahut overwhelmed hoon. Exams ke wajah se neend nahi aa rahi", time: "10:03" },
-    { id: 16, role: "ai", text: "Ye sunke dil thoda heavy ho gaya — lekin ye feelings bilkul valid hain, body ka response hai overload ka ✨ Ek kaam karte hain abhi: 4 counts breathe in, 6 counts breathe out. Kya tum try kar sakte ho mere saath?", time: "10:03", speaking: false },
-  ]);
+  const { companion, user, chatMessages, clearChatMessages } = useStore();
+  const [messages, setMessages] = useState(() => {
+    if (chatMessages && chatMessages.length > 0) {
+      return chatMessages.map(m => ({ id: m.id, role: m.role, text: m.content, time: m.msgTime, speaking: false }));
+    }
+    return [
+      { id: 1, role: "ai", text: "Heyy! Good morning ☀️ Aaj uthne ke baad kaisa feel hua pehle? Seedha bol, koi judgment nahi.", time: "9:41", speaking: false },
+      { id: 2, role: "user", text: "Thoda heavy feel ho raha tha. Kal raat fir neend nahi aayi properly", time: "9:42" },
+      { id: 3, role: "ai", text: "Yeh teen din ho gaye jab se tumne mujhe neend ki baat boli hai. Main genuinely concerned hoon 💙 Kya bathroom break ke bina puri raat jaag rahe ho?", time: "9:43", speaking: false },
+      { id: 4, role: "user", text: "Haan yaar. Raat 2 baje tak phone dekhta rehta hoon aur fir anxiety ho jaati hai ki kal ki class miss ho jaayegi", time: "9:44" },
+      { id: 5, role: "ai", text: "Okay ye ek classic loop hai — anxiety → phone → aur zyada anxiety. Ek chota experiment try karein aaj raat? Phone ko 9:30 PM ke baad dusre room mein rakh do. Seedha try karo, kal mujhe batana kaisa raha 🌙", time: "9:45", speaking: false },
+    ];
+  });
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -172,6 +167,7 @@ function ChatTab() {
 
     const userMsg = { id: Date.now(), role: "user", text, time: getTime() };
     setMessages(p => [...p, userMsg]);
+    saveChatMessage("user", text, userMsg.time);
 
     const history = messages.slice(-14).map(m => ({
       role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
@@ -199,6 +195,7 @@ function ChatTab() {
         setMessages(p => p.map(m => m.id === aiMsgId ? { ...m, text: displayed } : m));
         await new Promise(res => setTimeout(res, 28 + Math.random() * 22));
       }
+      saveChatMessage("ai", reply, getTime());
     } catch {
       setTyping(false);
       setMessages(p => [...p, {
@@ -247,6 +244,9 @@ function ChatTab() {
             <Shield size={11} /> Session Override
             {overrideOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
           </motion.button>
+          <button onClick={() => { setMessages([]); clearChatMessages(); }} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Clear Chat">
+            <RefreshCw size={16} />
+          </button>
           <button onClick={() => setShowCustomizer(true)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Customize companion">
             <Sliders size={16} />
           </button>

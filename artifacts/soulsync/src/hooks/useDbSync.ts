@@ -5,13 +5,8 @@ const CLIENT_ID_KEY = "soulsync_client_id";
 
 const getBackendUrl = () => import.meta.env.VITE_BACKEND_URL || "";
 
-function getClientId(): string {
-  let id = localStorage.getItem(CLIENT_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(CLIENT_ID_KEY, id);
-  }
-  return id;
+function getClientId(): string | null {
+  return localStorage.getItem(CLIENT_ID_KEY);
 }
 
 export function useClientId() {
@@ -28,6 +23,7 @@ export function useDbLoad() {
     loaded.current = true;
 
     const clientId = getClientId();
+    if (!clientId) return;
 
     fetch(`${getBackendUrl()}/api/sync/${encodeURIComponent(clientId)}`)
       .then(r => r.ok ? r.json() : null)
@@ -72,6 +68,17 @@ export function useDbLoad() {
             language: data.settings.language ?? "hinglish",
           });
         }
+        
+        if (data.chatMessages && Array.isArray(data.chatMessages)) {
+           useStore.getState().setChatMessages(
+             data.chatMessages.map((m: any) => ({
+               id: m.id,
+               role: m.role as any,
+               content: m.content,
+               msgTime: m.msgTime
+             }))
+           );
+        }
       })
       .catch(() => { /* offline — use localStorage fallback silently */ });
   }, [setUser, setCompanion, updateSettings]);
@@ -84,6 +91,8 @@ export function useDbSync() {
 
   const sync = useCallback(() => {
     const clientId = getClientId();
+    if (!clientId) return;
+    
     const { user, companion, completedQuests, psychMessages, psychBookings, settings } = useStore.getState();
 
     if (!user) return; // don't sync until onboarding is done
@@ -132,6 +141,7 @@ export function useDbSync() {
 // ── Save a single chat message to DB ─────────────────────────────────────────
 export function saveChatMessage(role: string, content: string, msgTime: string) {
   const clientId = getClientId();
+  if (!clientId) return;
   fetch(`${getBackendUrl()}/api/sync/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -142,6 +152,7 @@ export function saveChatMessage(role: string, content: string, msgTime: string) 
 // ── Log a mood entry ──────────────────────────────────────────────────────────
 export function logMood(mood: string, emotion?: string, intensity?: number, note?: string) {
   const clientId = getClientId();
+  if (!clientId) return;
   fetch(`${getBackendUrl()}/api/sync/mood`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

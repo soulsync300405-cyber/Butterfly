@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Landing } from "@/pages/Landing";
 import { Onboarding } from "@/pages/Onboarding";
 import { StudentApp } from "@/pages/StudentApp";
+import { UserLogin } from "@/pages/UserLogin";
 import { PsychLogin } from "@/pages/PsychLogin";
 import { PsychDashboard } from "@/pages/PsychDashboard";
 import { useStore } from "@/lib/store";
@@ -12,6 +13,7 @@ import { useDbLoad, useDbSync } from "@/hooks/useDbSync";
 type Screen =
   | "landing"
   | "onboarding"
+  | "user-login"
   | "student"
   | "psych-login"
   | "psych-dashboard";
@@ -57,7 +59,7 @@ function AppInner() {
   const handleSelectRole = (role: "student" | "psych") => {
     if (role === "student") {
       if (user && companion) setScreen("student");
-      else setScreen("onboarding");
+      else setScreen("user-login");
     } else {
       setScreen("psych-login");
     }
@@ -77,13 +79,21 @@ function AppInner() {
   const handleStudentLogout = () => {
     setUser(null as any);
     setCompanion(null as any);
-    setScreen("landing");
+    useStore.getState().logout();
+    setScreen("user-login");
   };
 
   return (
     <AnimatePresence mode="wait">
       {screen === "landing" && (
         <Landing key="landing" onSelectRole={handleSelectRole} />
+      )}
+      {screen === "user-login" && (
+        <UserLogin 
+          key="user-login" 
+          onLogin={() => setScreen("onboarding")} 
+          onBack={() => setScreen("landing")} 
+        />
       )}
       {screen === "onboarding" && (
         <Onboarding key="onboarding" onComplete={handleOnboardingComplete} />

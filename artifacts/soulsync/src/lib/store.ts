@@ -40,6 +40,13 @@ export type SharedMessage = {
   time: string;
 };
 
+export type ChatMessage = {
+  id: number;
+  role: 'user' | 'ai' | 'override';
+  content: string;
+  msgTime: string;
+};
+
 export type PsychBooking = {
   slot: string;
   sessionType: 'video' | 'audio' | 'chat';
@@ -58,8 +65,9 @@ type StoreState = {
   psychLastRead: Record<number, number>;
   // Bookings keyed by psychologist id
   psychBookings: Record<number, PsychBooking>;
+  chatMessages: ChatMessage[];
 
-  setUser: (u: UserProfile) => void;
+  setUser: (u: UserProfile | null) => void;
   setCompanion: (c: Companion) => void;
   completeQuest: (id: number, xp: number) => void;
   updateSettings: (s: Partial<Settings>) => void;
@@ -68,6 +76,9 @@ type StoreState = {
   markPsychRead: (psychId: number) => void;
   setPsychBooking: (psychId: number, booking: PsychBooking) => void;
   removePsychBooking: (psychId: number) => void;
+  setChatMessages: (msgs: ChatMessage[]) => void;
+  clearChatMessages: () => void;
+  logout: () => void;
 };
 
 export const useStore = create<StoreState>()(
@@ -91,6 +102,7 @@ export const useStore = create<StoreState>()(
       psychMessages: {},
       psychLastRead: {},
       psychBookings: {},
+      chatMessages: [],
 
       setUser: (u) => set({ user: u }),
       setCompanion: (c) => set({ companion: c }),
@@ -130,6 +142,18 @@ export const useStore = create<StoreState>()(
           delete next[psychId];
           return { psychBookings: next };
         }),
+      setChatMessages: (msgs) => set({ chatMessages: msgs }),
+      clearChatMessages: () => set({ chatMessages: [] }),
+      logout: () => {
+        localStorage.removeItem("soulsync_client_id");
+        set({
+          user: null,
+          chatMessages: [],
+          completedQuests: [],
+          psychMessages: {},
+          psychBookings: {},
+        });
+      },
     }),
     { name: 'soulsync_v1' }
   )

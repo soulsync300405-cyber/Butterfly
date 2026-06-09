@@ -153,6 +153,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      socket.io:
+        specifier: ^4.8.3
+        version: 4.8.3
     devDependencies:
       prettier:
         specifier: ^3.8.1
