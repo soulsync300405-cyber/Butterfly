@@ -1,5 +1,4 @@
 {
-  "buildCommand": "cd artifacts/soulsync && pnpm run build",
   "outputDirectory": "artifacts/soulsync/dist",
   "framework": "vite"
 }
