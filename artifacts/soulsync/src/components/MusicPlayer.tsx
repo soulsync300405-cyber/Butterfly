@@ -21,6 +21,8 @@ export function MusicPlayer() {
   const [expanded, setExpanded] = useState(false);
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(70);
+  const [spotifyConnected, setSpotifyConnected] = useState(false);
+  const [connectingSpotify, setConnectingSpotify] = useState(false);
   const audio = useAmbientAudio();
   const track = MUSIC_TRACKS[trackIdx];
   const gradient = PLAYLIST_COLORS[track.playlist] || "from-primary to-teal-500";
@@ -229,10 +231,34 @@ export function MusicPlayer() {
               </div>
 
               {/* Spotify connect */}
-              <button className="w-full text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1.5 py-1 border border-dashed border-border rounded-xl">
-                <span className="text-[#1DB954] text-xs">♪</span>
-                Connect Spotify for your own music
-              </button>
+              {spotifyConnected ? (
+                <div className="w-full mt-2 rounded-xl overflow-hidden">
+                  <iframe 
+                    style={{ borderRadius: '12px' }} 
+                    src="https://open.spotify.com/embed/playlist/0vvXsWCC9xrXsKd4FyS8kM?utm_source=generator&theme=0" 
+                    width="100%" 
+                    height="152" 
+                    frameBorder="0" 
+                    allowFullScreen={false} 
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+                    loading="lazy">
+                  </iframe>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => {
+                    setConnectingSpotify(true);
+                    setTimeout(() => {
+                      setConnectingSpotify(false);
+                      setSpotifyConnected(true);
+                    }, 1200);
+                  }}
+                  disabled={connectingSpotify}
+                  className="w-full text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1.5 py-1 border border-dashed border-border rounded-xl disabled:opacity-50 cursor-pointer">
+                  <span className="text-[#1DB954] text-xs">♪</span>
+                  {connectingSpotify ? "Connecting to Spotify..." : "Connect Spotify for your own music"}
+                </button>
+              )}
             </div>
           </motion.div>
         )}
