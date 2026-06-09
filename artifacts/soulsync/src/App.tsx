@@ -9,6 +9,7 @@ import { PsychDashboard } from "@/pages/PsychDashboard";
 import { useStore } from "@/lib/store";
 import type { UserProfile, Companion } from "@/lib/store";
 import { useDbLoad, useDbSync } from "@/hooks/useDbSync";
+import { getAccessToken, SPOTIFY_CLIENT_ID } from "@/lib/spotify";
 
 type Screen =
   | "landing"
@@ -27,6 +28,23 @@ function AppInner() {
   const [psychLicenseId, setPsychLicenseId] = useState("");
 
   const theme = useStore((s) => s.settings.theme);
+
+  useEffect(() => {
+    // Handle Spotify OAuth callback
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code) {
+      getAccessToken(SPOTIFY_CLIENT_ID, code)
+        .then((token) => {
+          if (token) {
+            localStorage.setItem("spotify_access_token", token);
+          }
+          // Clean up the URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch(err => console.error("Spotify Auth Error:", err));
+    }
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;

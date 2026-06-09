@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ChevronDown, Music2 } from "lucide-react";
 import { MUSIC_TRACKS } from "@/lib/data";
 import { useAmbientAudio, type Playlist } from "@/hooks/useAmbientAudio";
+import { fetchTopTracks, redirectToAuthCodeFlow, SPOTIFY_CLIENT_ID } from "@/lib/spotify";
 
 const PLAYLIST_COLORS: Record<string, string> = {
   Focus:      "from-violet-500 to-indigo-600",
@@ -21,8 +22,12 @@ export function MusicPlayer() {
   const [expanded, setExpanded] = useState(false);
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(70);
+  
   const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [connectingSpotify, setConnectingSpotify] = useState(false);
+  const [topTracks, setTopTracks] = useState<any[]>([]);
+  const [spotifyIframeUrl, setSpotifyIframeUrl] = useState("https://open.spotify.com/embed/playlist/0vvXsWCC9xrXsKd4FyS8kM?utm_source=generator&theme=0");
+
   const audio = useAmbientAudio();
   const track = MUSIC_TRACKS[trackIdx];
   const gradient = PLAYLIST_COLORS[track.playlist] || "from-primary to-teal-500";
@@ -33,6 +38,28 @@ export function MusicPlayer() {
     const id = setInterval(() => setProgress(x => (x + 0.08) % 100), 300);
     return () => clearInterval(id);
   }, [playing]);
+
+  useEffect(() => {
+    // Check if token exists on mount or when expanded
+    const token = localStorage.getItem("spotify_access_token");
+    if (token) {
+      setSpotifyConnected(true);
+      fetchTopTracks(token)
+        .then(data => {
+          if (data && data.items) {
+            setTopTracks(data.items);
+          }
+        })
+        .catch(err => {
+          console.error("Spotify fetch error:", err);
+          // If token is invalid/expired
+          if (err.status === 401 || err.message?.includes("401")) {
+            localStorage.removeItem("spotify_access_token");
+            setSpotifyConnected(false);
+          }
+        });
+    }
+  }, [expanded]);
 
   useEffect(() => {
     if (playing) {
@@ -232,31 +259,50 @@ export function MusicPlayer() {
 
               {/* Spotify connect */}
               {spotifyConnected ? (
-                <div className="w-full mt-2 rounded-xl overflow-hidden">
-                  <iframe 
-                    style={{ borderRadius: '12px' }} 
-                    src="https://open.spotify.com/embed/playlist/0vvXsWCC9xrXsKd4FyS8kM?utm_source=generator&theme=0" 
-                    width="100%" 
-                    height="152" 
-                    frameBorder="0" 
-                    allowFullScreen={false} 
-                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
-                    loading="lazy">
-                  </iframe>
+                <div className="w-full mt-2 space-y-2">
+                  <div className="rounded-xl overflow-hidden">
+                    <iframe 
+                      style={{ borderRadius: '12px' }} 
+                      src={spotifyIframeUrl} 
+                      width="100%" 
+                      height="152" 
+                      frameBorder="0" 
+                      allowFullScreen={false} 
+                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+                      loading="lazy">
+                    </iframe>
+                  </div>
+                  {topTracks.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase font-serif px-1">Your Top Tracks</p>
+                      <div className="max-h-32 overflow-y-auto space-y-1 pr-1" style={{ scrollbarWidth: "thin" }}>
+                        {topTracks.map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => setSpotifyIframeUrl(`https://open.spotify.com/embed/track/${t.id}?utm_source=generator&theme=0`)}
+                            className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
+                          >
+                            <img src={t.album?.images[2]?.url || t.album?.images[0]?.url} alt="" className="w-8 h-8 rounded object-cover" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-bold text-foreground truncate">{t.name}</p>
+                              <p className="text-[9px] text-muted-foreground truncate">{t.artists.map((a: any) => a.name).join(", ")}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button 
                   onClick={() => {
                     setConnectingSpotify(true);
-                    setTimeout(() => {
-                      setConnectingSpotify(false);
-                      setSpotifyConnected(true);
-                    }, 1200);
+                    redirectToAuthCodeFlow(SPOTIFY_CLIENT_ID);
                   }}
                   disabled={connectingSpotify}
-                  className="w-full text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1.5 py-1 border border-dashed border-border rounded-xl disabled:opacity-50 cursor-pointer">
+                  className="w-full text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-border rounded-xl disabled:opacity-50 cursor-pointer">
                   <span className="text-[#1DB954] text-xs">♪</span>
-                  {connectingSpotify ? "Connecting to Spotify..." : "Connect Spotify for your own music"}
+                  {connectingSpotify ? "Redirecting to Spotify..." : "Connect Spotify for your own music"}
                 </button>
               )}
             </div>
