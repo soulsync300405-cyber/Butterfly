@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { fetchGeminiDirect } from "@/lib/gemini";
+import { analyzeVibeFromImage } from "@/lib/gemini-vision";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Target, BookOpen, UserCheck, BarChart2, Settings as SettingsIcon,
@@ -961,6 +962,21 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
   const [scanStepText, setScanStepText] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const captureFrame = (): string | null => {
+    if (!videoRef.current || !canvasRef.current) return null;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL("image/jpeg", 0.8);
+    }
+    return null;
+  };
   
   // Vibe Result state
   const [detectedEmotion, setDetectedEmotion] = useState<"Stressed" | "Joyful" | "Focused" | "Exhausted" | null>(null);
@@ -1120,40 +1136,48 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
   }, [activeSubTab]);
 
   // Handle Scanning for Vibe
-  const handleVibeScan = () => {
-    if (scanning) return;
+  const handleVibeScan = async () => {
+    if (scanning || !cameraActive) return;
     setScanning(true);
     setScanProgress(0);
     setDetectedEmotion(null);
     setExpressionDialogue("");
     
+    const base64Image = captureFrame();
+    if (!base64Image) {
+      setScanning(false);
+      return;
+    }
+
     const steps = [
-      "Initializing camera feed...",
-      "Detecting facial outlines...",
-      "Mapping 68 facial landmark coordinates...",
+      "Capturing your aura...",
       "Analyzing micro-expressions...",
+      "Processing vibe with Gemini Vision...",
       "Mapping mood metrics to Asha's empathy core..."
     ];
     
     let currentStep = 0;
+    setScanStepText(steps[0]);
+
     const interval = setInterval(() => {
       setScanProgress(prev => {
-        const next = prev + 5;
-        if (next >= 100) {
-          clearInterval(interval);
-          finishVibeScan();
-          return 100;
-        }
-        // Update helper text at intervals
-        const stepIdx = Math.floor((next / 100) * steps.length);
-        if (stepIdx !== currentStep && stepIdx < steps.length) {
-          currentStep = stepIdx;
-          setScanStepText(steps[stepIdx]);
-        }
-        return next;
+        if (prev < 90) return prev + 10;
+        return prev;
       });
-    }, 150);
-    setScanStepText(steps[0]);
+      currentStep = (currentStep + 1) % steps.length;
+      setScanStepText(steps[currentStep]);
+    }, 500);
+
+    const result = await analyzeVibeFromImage(base64Image, companion);
+    
+    clearInterval(interval);
+    setScanProgress(100);
+    setScanStepText("Done!");
+    
+    setScanning(false);
+    setVibeScanCount(prev => prev + 1);
+    setDetectedEmotion(result.emotion as any);
+    setExpressionDialogue(result.text);
   };
 
   const finishVibeScan = () => {
@@ -1400,13 +1424,16 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
           <div className="relative aspect-video bg-black rounded-3xl border border-primary/20 overflow-hidden shadow-2xl group flex items-center justify-center">
             {activeSubTab === "vibe" ? (
               cameraActive && !cameraError ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover scale-x-[-1]"
+                  />
+                  <canvas ref={canvasRef} className="hidden" />
+                </>
               ) : (
                 <div className="text-center p-6 space-y-3">
                   <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary animate-pulse">
