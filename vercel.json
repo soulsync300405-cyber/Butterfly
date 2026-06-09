@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm install -g pnpm && pnpm install && cd artifacts/soulsync && pnpm run build",
+  "buildCommand": "cd artifacts/soulsync && pnpm run build",
   "outputDirectory": "artifacts/soulsync/dist",
   "framework": "vite"
 }
