@@ -35,3 +35,4 @@ if (process.env.DATABASE_URL) {
 }
 
 export * from "./schema";
+export * as schema from "./schema";
