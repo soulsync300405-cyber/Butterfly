@@ -967,6 +967,7 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
   const captureFrame = (): string | null => {
     if (!videoRef.current || !canvasRef.current) return null;
     const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
     const canvas = canvasRef.current;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -1104,11 +1105,13 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
       setCameraActive(true);
+      setTimeout(() => {
+        if (videoRef.current && streamRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+          videoRef.current.play().catch(e => console.error(e));
+        }
+      }, 50);
     } catch (err) {
       console.error("Camera access error:", err);
       setCameraError(true);

@@ -45,7 +45,11 @@ Return the result STRICTLY as a JSON object with this format, no markdown, no ot
       const data = await response.json();
       const parts = data?.candidates?.[0]?.content?.parts ?? [];
       const textPart = parts.find((p: any) => p.text && !p.thought);
-      const reply = (textPart?.text ?? parts[0]?.text ?? "").trim();
+      let reply = (textPart?.text ?? parts[0]?.text ?? "").trim();
+      
+      // Remove any markdown code blocks that Gemini might include
+      reply = reply.replace(/```json/gi, "").replace(/```/gi, "").trim();
+
       const parsed = JSON.parse(reply);
       return {
          emotion: parsed.emotion || "Focused",
