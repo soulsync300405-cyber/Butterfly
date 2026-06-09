@@ -5,6 +5,7 @@
   "scripts": {
     "preinstall": "node -e \"console.log('Using pnpm')\"",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "vercel-build": "pnpm run build && mv artifacts/soulsync/dist dist",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
