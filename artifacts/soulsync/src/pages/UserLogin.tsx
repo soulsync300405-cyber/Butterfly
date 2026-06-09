@@ -18,42 +18,20 @@ export function UserLogin({ onLogin, onBack }: { onLogin: (clientId: string) => 
     if (!username || !password) return;
 
     setIsLoading(true);
-    try {
-      const endpoint = isRegistering ? "/api/auth/register" : "/api/auth/login";
-      const body = isRegistering ? { username, password, name } : { username, password };
-
-      const res = await fetch(`${getBackendUrl()}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to authenticate",
-          variant: "destructive"
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      localStorage.setItem("soulsync_client_id", data.clientId);
+    
+    // Simulate network delay
+    setTimeout(() => {
+      const clientId = `user_${Math.random().toString(36).substring(7)}`;
+      const displayName = isRegistering ? name : username;
+      
+      localStorage.setItem("soulsync_client_id", clientId);
       toast({
         title: isRegistering ? "Account created!" : "Welcome back!",
-        description: `Logged in as ${data.name}`,
-      });
-      onLogin(data.clientId);
-    } catch (err) {
-      toast({
-        title: "Network Error",
-        description: "Could not reach the server.",
-        variant: "destructive"
+        description: `Logged in as ${displayName}`,
       });
       setIsLoading(false);
-    }
+      onLogin(clientId);
+    }, 800);
   };
 
   return (
