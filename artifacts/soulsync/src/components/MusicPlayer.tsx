@@ -27,7 +27,7 @@ export function MusicPlayer() {
   const [youtubeSearchQuery, setYoutubeSearchQuery] = useState("");
   const [youtubeResults, setYoutubeResults] = useState<YouTubeSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [activeVideoId, setActiveVideoId] = useState("jfKfPfyJRdk"); // default: Lofi Girl
+  const [activeVideoId, setActiveVideoId] = useState("lTRiuFIWV54"); // default: Lofi Girl 1AM mix
 
   const audio = useAmbientAudio();
   const track = MUSIC_TRACKS[trackIdx];
@@ -268,10 +268,10 @@ export function MusicPlayer() {
 
                 {/* Preset Stations */}
                 <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-                  <button onClick={() => setActiveVideoId("jfKfPfyJRdk")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🎧 Lofi Girl</button>
-                  <button onClick={() => setActiveVideoId("5yx6BWlEVcY")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🦝 Chillhop</button>
-                  <button onClick={() => setActiveVideoId("tNkZsRW7h2c")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🌧️ Rain Sounds</button>
-                  <button onClick={() => setActiveVideoId("VfU6x1YVjT4")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🎵 Bollywood Chill</button>
+                  <button onClick={() => setActiveVideoId("lTRiuFIWV54")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🎧 Lofi Girl</button>
+                  <button onClick={() => setActiveVideoId("ownHh9QIsRk")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🦝 Chillhop</button>
+                  <button onClick={() => setActiveVideoId("jX6kn9_U8qk")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🌧️ Rain Sounds</button>
+                  <button onClick={() => setActiveVideoId("g8lyY9xYToU")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🎵 Bollywood Chill</button>
                 </div>
 
                 {/* Search Bar */}
