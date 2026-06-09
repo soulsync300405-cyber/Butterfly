@@ -182,7 +182,7 @@ function ChatTab() {
       const delay = 900 + Math.random() * 800;
       await new Promise(res => setTimeout(res, delay));
 
-      const reply = await fetchGeminiDirect(history);
+      const reply = await fetchGeminiDirect(history, companion);
 
       setTyping(false);
       setMessages(p => [...p, { id: aiMsgId, role: "ai", text: "", time: getTime(), speaking: false }]);

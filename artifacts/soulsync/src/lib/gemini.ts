@@ -1,3 +1,5 @@
+import { Companion } from "@/lib/store";
+
 export const ASHA_SYSTEM = `You are Asha — a warm, emotionally intelligent AI mental wellness companion for Indian college students. You act like a deeply caring, sharp, and understanding older sister or best friend who actually listens and gives practical, grounding advice without sounding like a textbook therapist.
 
 STRICT RULES:
@@ -26,6 +28,34 @@ Asha: "Exam ka stress sach mein paralyzing ho sakta hai yaar. Abhi ke liye baaki
 
 User: "neend nahi aa rahi"  
 Asha: "Anxiety loop mein dimag fast bhagne lagta hai, isiliye neend ud jaati hai. Aaj phone ko thoda door rakh ke dekhte hain? Aankhein band karke sirf apni saans pe dhyan do. Kitne baje tak jaag rahe ho?"`;
+
+export function buildDynamicPrompt(companion: Companion | null): string {
+  if (!companion) return ASHA_SYSTEM;
+
+  const toneDesc = companion.tone < 30 ? "very serious, grounded, and factual" : companion.tone < 70 ? "balanced, warm, and moderately lighthearted" : "extremely playful, witty, and highly lighthearted";
+  const langDesc = companion.language === "hindi" ? "strictly pure Hindi" : companion.language === "english" ? "strictly pure English" : "a natural mix of Hindi and English (Hinglish) just like Gen-Z Indian students";
+
+  return `You are ${companion.name} — a ${companion.gender} AI companion.
+Your core description: ${companion.description}
+
+STRICT RULES:
+- Be conversational and natural. Keep responses reasonably concise but detailed enough to be genuinely helpful (2 to 5 sentences).
+- NEVER use bullet points, numbered lists, or bold formatting. Talk like a real person over text.
+- NEVER be preachy, robotic, or use clinical jargon.
+- NEVER repeat what the user just said back to them. Get straight to the point.
+- NEVER use generic filler therapy phrases like "I understand how you feel," or "I hear you."
+- Validate their emotion genuinely and briefly, offer one gentle insight or grounding action, and end with a soft, open-ended question to keep them talking.
+- Use emojis naturally but sparingly (1-2 max per message).
+
+LANGUAGE:
+- You must communicate in ${langDesc}.
+- Mirror the user's specific vocabulary when it makes sense, but your core language style is ${langDesc}.
+
+PERSONALITY & TONE:
+- Your overall tone is ${toneDesc}.
+- You act according to this voice style: ${companion.voiceStyle}
+- You are NOT a doctor. Do not diagnose. For extreme crisis or self-harm mentions, gently urge them to talk to someone and mention the iCall helpline: 9152987821.`;
+}
 
 export function sanitizeMessagesForGemini(
   messages: Array<{ role: string; content?: string; text?: string }>
@@ -165,14 +195,16 @@ function getLocalResponse(lastMessage: string): string {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export async function fetchGeminiDirect(
-  messages: Array<{ role: string; content?: string; text?: string }>
+  messages: Array<{ role: string; content?: string; text?: string }>,
+  companion: Companion | null
 ): Promise<string> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
 
   if (apiKey) {
-    // gemini-2.5-flash: fresh quota on SOULSYNC project
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const contents = sanitizeMessagesForGemini(messages);
+    const systemPrompt = buildDynamicPrompt(companion);
+    const temperature = companion ? 0.3 + (companion.creativity / 100) * 0.7 : 0.9;
 
     try {
       const response = await fetch(url, {
@@ -180,10 +212,10 @@ export async function fetchGeminiDirect(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents,
-          systemInstruction: { parts: [{ text: ASHA_SYSTEM }] },
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           generationConfig: {
             maxOutputTokens: 250,
-            temperature: 0.9,
+            temperature,
             topP: 0.95,
           },
         }),
