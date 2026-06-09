@@ -6,3 +6,4 @@ export * from "./psych_messages";
 export * from "./psych_bookings";
 export * from "./mood_logs";
 export * from "./user_settings";
+export * from "./psychologists";
