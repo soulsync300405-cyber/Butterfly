@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ChevronDown, Music2 } from "lucide-react";
 import { MUSIC_TRACKS } from "@/lib/data";
 import { useAmbientAudio, type Playlist } from "@/hooks/useAmbientAudio";
-import { fetchTopTracks, redirectToAuthCodeFlow, SPOTIFY_CLIENT_ID } from "@/lib/spotify";
+import { searchYouTube, type YouTubeSearchResult } from "@/lib/youtube";
+import { Search, Youtube } from "lucide-react";
 
 const PLAYLIST_COLORS: Record<string, string> = {
   Focus:      "from-violet-500 to-indigo-600",
@@ -23,10 +24,10 @@ export function MusicPlayer() {
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(70);
   
-  const [spotifyConnected, setSpotifyConnected] = useState(false);
-  const [connectingSpotify, setConnectingSpotify] = useState(false);
-  const [topTracks, setTopTracks] = useState<any[]>([]);
-  const [spotifyIframeUrl, setSpotifyIframeUrl] = useState("https://open.spotify.com/embed/playlist/0vvXsWCC9xrXsKd4FyS8kM?utm_source=generator&theme=0");
+  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState("");
+  const [youtubeResults, setYoutubeResults] = useState<YouTubeSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeVideoId, setActiveVideoId] = useState("jfKfPfyJRdk"); // default: Lofi Girl
 
   const audio = useAmbientAudio();
   const track = MUSIC_TRACKS[trackIdx];
@@ -40,25 +41,15 @@ export function MusicPlayer() {
   }, [playing]);
 
   useEffect(() => {
-    // Check if token exists on mount or when expanded
-    const token = localStorage.getItem("spotify_access_token");
-    if (token) {
-      setSpotifyConnected(true);
-      fetchTopTracks(token)
-        .then(data => {
-          if (data && data.items) {
-            setTopTracks(data.items);
-          }
-        })
-        .catch(err => {
-          console.error("Spotify fetch error:", err);
-          // If token is invalid/expired
-          if (err.status === 401 || err.message?.includes("401")) {
-            localStorage.removeItem("spotify_access_token");
-            setSpotifyConnected(false);
-          }
-        });
-    }
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!youtubeSearchQuery.trim()) return;
+    
+    setIsSearching(true);
+    const results = await searchYouTube(youtubeSearchQuery);
+    setYoutubeResults(results);
+    setIsSearching(false);
+  };
   }, [expanded]);
 
   useEffect(() => {
@@ -257,54 +248,67 @@ export function MusicPlayer() {
                 ))}
               </div>
 
-              {/* Spotify connect */}
-              {spotifyConnected ? (
-                <div className="w-full mt-2 space-y-2">
-                  <div className="rounded-xl overflow-hidden">
-                    <iframe 
-                      style={{ borderRadius: '12px' }} 
-                      src={spotifyIframeUrl} 
-                      width="100%" 
-                      height="152" 
-                      frameBorder="0" 
-                      allowFullScreen={false} 
-                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
-                      loading="lazy">
-                    </iframe>
-                  </div>
-                  {topTracks.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase font-serif px-1">Your Top Tracks</p>
-                      <div className="max-h-32 overflow-y-auto space-y-1 pr-1" style={{ scrollbarWidth: "thin" }}>
-                        {topTracks.map((t) => (
-                          <button
-                            key={t.id}
-                            onClick={() => setSpotifyIframeUrl(`https://open.spotify.com/embed/track/${t.id}?utm_source=generator&theme=0`)}
-                            className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
-                          >
-                            <img src={t.album?.images[2]?.url || t.album?.images[0]?.url} alt="" className="w-8 h-8 rounded object-cover" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[10px] font-bold text-foreground truncate">{t.name}</p>
-                              <p className="text-[9px] text-muted-foreground truncate">{t.artists.map((a: any) => a.name).join(", ")}</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+              {/* YouTube Player & Search */}
+              <div className="w-full mt-4 space-y-3 pt-3 border-t border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <Youtube size={14} className="text-red-500" />
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase font-serif">YouTube Player</p>
                 </div>
-              ) : (
-                <button 
-                  onClick={() => {
-                    setConnectingSpotify(true);
-                    redirectToAuthCodeFlow(SPOTIFY_CLIENT_ID);
-                  }}
-                  disabled={connectingSpotify}
-                  className="w-full text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-border rounded-xl disabled:opacity-50 cursor-pointer">
-                  <span className="text-[#1DB954] text-xs">♪</span>
-                  {connectingSpotify ? "Redirecting to Spotify..." : "Connect Spotify for your own music"}
-                </button>
-              )}
+                
+                {/* YouTube Embed */}
+                <div className="rounded-xl overflow-hidden bg-black aspect-video w-full shadow-inner">
+                  <iframe 
+                    width="100%" 
+                    height="100%" 
+                    src={`https://www.youtube.com/embed/${activeVideoId}?autoplay=0`} 
+                    title="YouTube video player" 
+                    frameBorder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen
+                  ></iframe>
+                </div>
+
+                {/* Preset Stations */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                  <button onClick={() => setActiveVideoId("jfKfPfyJRdk")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🎧 Lofi Girl</button>
+                  <button onClick={() => setActiveVideoId("5yx6BWlEVcY")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🦝 Chillhop</button>
+                  <button onClick={() => setActiveVideoId("tNkZsRW7h2c")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🌧️ Rain Sounds</button>
+                  <button onClick={() => setActiveVideoId("VfU6x1YVjT4")} className="flex-shrink-0 text-[9px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors border border-border">🎵 Bollywood Chill</button>
+                </div>
+
+                {/* Search Bar */}
+                <form onSubmit={handleSearch} className="relative">
+                  <input 
+                    type="text" 
+                    value={youtubeSearchQuery}
+                    onChange={(e) => setYoutubeSearchQuery(e.target.value)}
+                    placeholder="Search YouTube..." 
+                    className="w-full bg-background border border-border rounded-lg px-3 py-1.5 pl-8 text-[11px] text-foreground focus:outline-none focus:border-primary transition-colors"
+                  />
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                </form>
+
+                {/* Search Results */}
+                {isSearching ? (
+                  <p className="text-[10px] text-center text-muted-foreground py-2">Searching...</p>
+                ) : youtubeResults.length > 0 ? (
+                  <div className="max-h-40 overflow-y-auto space-y-1 pr-1" style={{ scrollbarWidth: "thin" }}>
+                    {youtubeResults.map((video) => (
+                      <button
+                        key={video.id.videoId}
+                        onClick={() => setActiveVideoId(video.id.videoId)}
+                        className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted/50 transition-colors text-left border border-transparent hover:border-border"
+                      >
+                        <img src={video.snippet.thumbnails.default.url} alt="" className="w-10 h-8 rounded object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-foreground truncate">{video.snippet.title}</p>
+                          <p className="text-[9px] text-muted-foreground truncate">{video.snippet.channelTitle}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </motion.div>
         )}
