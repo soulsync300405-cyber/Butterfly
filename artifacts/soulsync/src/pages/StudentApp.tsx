@@ -1293,24 +1293,26 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
     if (arch === "Dad Jokes Specialist") subreddit = "dadjokes";
     else if (arch === "Deadpan Relatable Cynic") subreddit = "me_irl";
 
-    fetch(`https://www.reddit.com/r/${subreddit}/top.json?t=month&limit=15`)
+    fetch(`https://meme-api.com/gimme/${subreddit}/3`)
       .then(res => res.json())
       .then(data => {
-         const posts = data.data.children
-           .filter((c: any) => !c.data.is_video && c.data.url && (c.data.url.endsWith('.jpg') || c.data.url.endsWith('.png') || c.data.url.endsWith('.gif')))
-           .slice(0, 3)
-           .map((c: any) => ({
+         if (data && data.memes) {
+           const posts = data.memes.map((c: any) => ({
              type: "reddit_image",
-             title: `r/${c.data.subreddit}`,
-             sub: `${c.data.ups} upvotes`,
-             desc: c.data.title,
+             title: `r/${c.subreddit}`,
+             sub: `${c.ups} upvotes`,
+             desc: c.title,
              icon: "🔥",
-             url: c.data.url
+             url: c.url
            }));
-         setRedditMemes(posts);
+           setRedditMemes(posts);
+         } else {
+           setRedditMemes(getHumorMedia(arch));
+         }
       })
       .catch(err => {
          console.error("Reddit fetch err:", err);
+         setRedditMemes(getHumorMedia(arch));
       });
   };
 
