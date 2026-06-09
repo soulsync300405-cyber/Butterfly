@@ -297,7 +297,7 @@ function ChatTab() {
               </div>
             )}
             <div className={`max-w-[72%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
-              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground rounded-tr-sm"
                   : msg.role === "override"

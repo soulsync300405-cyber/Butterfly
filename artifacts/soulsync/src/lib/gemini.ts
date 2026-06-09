@@ -204,7 +204,8 @@ export async function fetchGeminiDirect(
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const contents = sanitizeMessagesForGemini(messages);
     const systemPrompt = buildDynamicPrompt(companion);
-    const temperature = companion ? 0.3 + (companion.creativity / 100) * 0.7 : 0.9;
+    const creativityVal = companion?.creativity ?? 60;
+    const temperature = 0.3 + (creativityVal / 100) * 0.7;
 
     try {
       const response = await fetch(url, {
