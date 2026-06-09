@@ -188,8 +188,6 @@ export async function fetchGeminiDirect(
             maxOutputTokens: 250,
             temperature: 0.9,
             topP: 0.95,
-            // Disable thinking for fast conversational replies
-            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       });
