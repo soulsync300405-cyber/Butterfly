@@ -1027,6 +1027,7 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
   const [isGeneratingJoke, setIsGeneratingJoke] = useState(false);
   const [jokeStreamedText, setJokeStreamedText] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
+  const [redditMemes, setRedditMemes] = useState<any[]>([]);
 
   const humorQuestions = [
     {
