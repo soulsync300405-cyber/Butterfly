@@ -46,11 +46,18 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
   const { user, companion, completedQuests, settings } = useStore();
   const [playingCourse, setPlayingCourse] = useState<typeof COURSES[0] | null>(null);
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background relative z-10">
       {(settings.theme === "antigravity" || settings.theme === "cyberpunk" || settings.theme === "dark-death" || settings.theme === "netflix" || settings.theme === "beige-forest" || settings.theme === "butterfly") && <AntigravityCanvas />}
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 bg-card border-r border-border flex flex-col">
+      <aside className="w-64 flex-shrink-0 bg-card border-r border-border hidden md:flex flex-col">
         {/* Brand */}
         <div className="px-4 py-5 border-b border-border">
           <h1 className="text-xl font-black font-serif text-primary">SoulSync</h1>
@@ -96,7 +103,7 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
         </nav>
 
         {/* Music Player */}
-        <MusicPlayer />
+        {!isMobile && <MusicPlayer />}
 
         {/* Logout */}
         <button onClick={onLogout} className="flex items-center gap-2 px-4 py-3 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors text-sm">
@@ -105,19 +112,40 @@ export function StudentApp({ onLogout }: { onLogout: () => void }) {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.15 }} className="h-full overflow-y-auto">
-            {tab === "chat" && <ChatTab />}
-            {tab === "quests" && <QuestsTab />}
-            {tab === "learn" && <LearnTab playing={playingCourse} setPlaying={setPlayingCourse} />}
-            {tab === "scan" && <ScanTab setTab={setTab} setPlayingCourse={setPlayingCourse} />}
-            {tab === "psych" && <PsychTab />}
-            {tab === "analytics" && <AnalyticsTab />}
-            {tab === "settings" && <SettingsTab />}
-          </motion.div>
-        </AnimatePresence>
+      <main className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative">
+          <AnimatePresence mode="wait">
+            <motion.div key={tab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.15 }} className="h-full overflow-y-auto pb-4">
+              {tab === "chat" && <ChatTab />}
+              {tab === "quests" && <QuestsTab />}
+              {tab === "learn" && <LearnTab playing={playingCourse} setPlaying={setPlayingCourse} />}
+              {tab === "scan" && <ScanTab setTab={setTab} setPlayingCourse={setPlayingCourse} />}
+              {tab === "psych" && <PsychTab />}
+              {tab === "analytics" && <AnalyticsTab />}
+              {tab === "settings" && <SettingsTab />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Mobile Layout Bottom Elements */}
+        {isMobile && (
+          <div className="flex-shrink-0 flex flex-col border-t border-border bg-card z-50">
+            <MusicPlayer />
+            <nav className="flex justify-around items-center px-1 py-1.5 pb-2">
+              {NAV.map(item => (
+                <button key={item.id} onClick={() => setTab(item.id)}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all min-w-[56px] relative ${tab === item.id ? "text-primary" : "text-muted-foreground hover:bg-muted/30"}`}>
+                  <item.icon size={20} className={tab === item.id ? "scale-110 transition-transform" : ""} />
+                  <span className="text-[9px] font-medium truncate w-full text-center">{item.label.split(" ")[0]}</span>
+                  {item.id === "quests" && completedQuests.length > 0 && (
+                    <span className="absolute top-1 right-2 w-2 h-2 bg-primary rounded-full" />
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+        )}
       </main>
     </div>
   );
