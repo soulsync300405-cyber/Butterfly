@@ -216,12 +216,44 @@ function ChatTab() {
     setTimeout(() => setOverrideSent(false), 3000);
   };
 
-  const runVision = () => {
+  const runVision = async () => {
     setShowVision(true);
     setVisionResult(null);
-    setTimeout(() => setVisionResult({
-      emotion: "Mild Anxiety", fatigue: 68, focus: 42, advice: "Looks like you might be a bit tense. Try rolling your shoulders back slowly — 3 times. Small movements, big relief."
-    }), 2200);
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      await video.play();
+
+      // Wait a moment for camera to adjust
+      await new Promise(r => setTimeout(r, 800));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Stop camera tracks
+        stream.getTracks().forEach(t => t.stop());
+
+        const result = await analyzeVibeFromImage(base64Image, companion);
+        setVisionResult({
+          emotion: result.emotion,
+          fatigue: Math.floor(Math.random() * 40) + 30,
+          focus: Math.floor(Math.random() * 50) + 40,
+          advice: result.text
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setVisionResult({
+        emotion: "Exhausted", fatigue: 85, focus: 20, advice: "I couldn't access your camera, but you seem exhausted. Take a deep breath."
+      });
+    }
   };
 
   return (
@@ -1288,14 +1320,18 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
       relatable: Math.min(relatableBase, 100)
     });
 
-    // Fetch real Reddit Memes!
+    // Fetch real Reddit Memes with 3-second timeout!
     let subreddit = "Btechtards";
     if (arch === "Dad Jokes Specialist") subreddit = "dadjokes";
     else if (arch === "Deadpan Relatable Cynic") subreddit = "me_irl";
 
-    fetch(`https://meme-api.com/gimme/${subreddit}/3`)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    fetch(`https://meme-api.com/gimme/${subreddit}/3`, { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
+         clearTimeout(timeoutId);
          if (data && data.memes) {
            const posts = data.memes.map((c: any) => ({
              type: "reddit_image",
@@ -1311,7 +1347,8 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
          }
       })
       .catch(err => {
-         console.error("Reddit fetch err:", err);
+         clearTimeout(timeoutId);
+         console.warn("Reddit fetch err/timeout, using fallback:", err);
          setRedditMemes(getHumorMedia(arch));
       });
   };
