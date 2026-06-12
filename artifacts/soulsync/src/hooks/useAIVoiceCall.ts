@@ -42,18 +42,20 @@ function pickVoice(): SpeechSynthesisVoice | null {
   // Priority: natural-sounding neural female voices first.
   // These sound much more human than local TTS voices.
   const priority = [
-    // 🥇 Neerja — Indian female neural voice, sounds most natural for Hinglish
-    (v: SpeechSynthesisVoice) => /neerja/i.test(v.name),
+    // 🥇 Neerja/Swara — Indian female neural voices, perfect for Hinglish
+    (v: SpeechSynthesisVoice) => /neerja|swara/i.test(v.name),
     // Indian female fallback
-    (v: SpeechSynthesisVoice) => /heera/i.test(v.name) && /en-IN|hi/i.test(v.lang),
-    // Edge neural US/UK female
-    (v: SpeechSynthesisVoice) => /aria|jenny|sonia|libby|mia/i.test(v.name),
-    // Any online female English voice
-    (v: SpeechSynthesisVoice) => !v.localService && /female|woman/i.test(v.name) && v.lang.startsWith("en"),
-    (v: SpeechSynthesisVoice) => !v.localService && v.lang.startsWith("en"),
-    // Local female voices as last resort
-    (v: SpeechSynthesisVoice) => /zira|hazel|susan/i.test(v.name),
-    (v: SpeechSynthesisVoice) => v.localService && v.lang.startsWith("en"),
+    (v: SpeechSynthesisVoice) => /heera/i.test(v.name),
+    // Any female Indian voice (hi-IN or en-IN)
+    (v: SpeechSynthesisVoice) => /hi-IN|en-IN/i.test(v.lang) && /female|woman/i.test(v.name),
+    // Any Indian voice
+    (v: SpeechSynthesisVoice) => /hi-IN|en-IN/i.test(v.lang),
+    // Hindi generic
+    (v: SpeechSynthesisVoice) => /hindi/i.test(v.name),
+    // UK English female (sounds better for Hindi phonetics than US)
+    (v: SpeechSynthesisVoice) => v.lang === "en-GB" && /female/i.test(v.name),
+    // Any female voice globally
+    (v: SpeechSynthesisVoice) => /female|woman/i.test(v.name),
   ];
 
   for (const fn of priority) {
@@ -86,9 +88,16 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
 
   if (voice) {
     utt.voice = voice;
-    utt.lang  = voice.lang;
+    // If the chosen voice isn't natively Indian, force the browser to treat the text as Hindi
+    if (!/hi-IN|en-IN/i.test(voice.lang)) {
+      utt.lang = "hi-IN";
+    } else {
+      utt.lang = voice.lang;
+    }
+  } else {
+    // When voice=null: browser uses its own default — force Hindi rules
+    utt.lang = "hi-IN";
   }
-  // When voice=null: browser uses its own default — always reliable.
 
   utt.rate   = 0.88;
   utt.pitch  = 1.1;
