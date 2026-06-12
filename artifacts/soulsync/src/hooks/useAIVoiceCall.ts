@@ -23,146 +23,67 @@ function cleanForTTS(text: string): string {
 }
 
 // ── Voice loader ──────────────────────────────────────────────────────────────
-function getVoices(): SpeechSynthesisVoice[] {
-  return typeof window !== "undefined" ? window.speechSynthesis.getVoices() : [];
-}
+export const hasSR = typeof window !== "undefined" && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+const SRClass: any = typeof window !== "undefined" ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null) : null;
 
-function pickVoice(): SpeechSynthesisVoice | null {
-  const voices = getVoices();
-  if (!voices.length) return null;
+// Global audio reference to allow cancellation
+let currentAudio: HTMLAudioElement | null = null;
+let isAudioCancelled = false;
 
-  // Log all voices once so we can see what's available
-  if (!(window as any).__voicesLogged) {
-    (window as any).__voicesLogged = true;
-    console.log("[Asha Voices available]:\n" +
-      voices.map(v => `  ${v.localService ? "✅LOCAL " : "☁️ONLINE"} | ${v.name} | ${v.lang}`).join("\n")
-    );
-  }
-
-  // Priority: natural-sounding neural female voices first.
-  // These sound much more human than local TTS voices.
-  const priority = [
-    // 🥇 Neerja/Swara — Indian female neural voices, perfect for Hinglish
-    (v: SpeechSynthesisVoice) => /neerja|swara/i.test(v.name),
-    // Indian female fallback
-    (v: SpeechSynthesisVoice) => /heera/i.test(v.name),
-    // Any female Indian voice (hi-IN or en-IN)
-    (v: SpeechSynthesisVoice) => /hi-IN|en-IN/i.test(v.lang) && /female|woman/i.test(v.name),
-    // Any Indian voice
-    (v: SpeechSynthesisVoice) => /hi-IN|en-IN/i.test(v.lang),
-    // Hindi generic
-    (v: SpeechSynthesisVoice) => /hindi/i.test(v.name),
-    // UK English female (sounds better for Hindi phonetics than US)
-    (v: SpeechSynthesisVoice) => v.lang === "en-GB" && /female/i.test(v.name),
-    // Any female voice globally
-    (v: SpeechSynthesisVoice) => /female|woman/i.test(v.name),
-  ];
-
-  for (const fn of priority) {
-    const match = voices.find(fn);
-    if (match) {
-      console.log("[Asha] Using voice:", match.name, `(${match.lang})`, match.localService ? "LOCAL" : "ONLINE");
-      return match;
-    }
-  }
-  return voices[0] ?? null;
-}
-
-const hasSpeech = typeof window !== "undefined" && "speechSynthesis" in window;
-const SRClass: any = typeof window !== "undefined"
-  ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null)
-  : null;
-export const hasSR = !!SRClass;
-
-// ── Core TTS with auto-fallback ───────────────────────────────────────────────
-// Tries the preferred voice. If it doesn't start within 1.5s (online voice
-// failing silently), cancels and retries with the browser's default voice.
-function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
-  if (!hasSpeech || !text.trim()) {
-    setTimeout(onEnd, Math.min(text.length * 55, 5000));
+// ── Core TTS using Google Translate API (Guaranteed Hinglish Voice) ───────────
+function ttsSpeak(text: string, onEnd: () => void): void {
+  if (!text.trim()) {
+    setTimeout(onEnd, 500);
     return;
   }
 
-  const voice = _useDefault ? null : pickVoice();
-  const utt = new SpeechSynthesisUtterance(text);
+  isAudioCancelled = false;
 
-  if (voice) {
-    utt.voice = voice;
-    // If the chosen voice isn't natively Indian, force the browser to treat the text as Hindi
-    if (!/hi-IN|en-IN/i.test(voice.lang)) {
-      utt.lang = "hi-IN";
-    } else {
-      utt.lang = voice.lang;
-    }
-  } else {
-    // When voice=null: browser uses its own default — force Hindi rules
-    utt.lang = "hi-IN";
-  }
+  // Split into manageable chunks (Google TTS limit is ~200 chars)
+  const chunks = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map(c => c.trim()).filter(Boolean) || [text];
+  let currentChunkIdx = 0;
 
-  utt.rate   = 0.88;
-  utt.pitch  = 1.1;
-  utt.volume = 1;
-
-  let started = false;
-  let done    = false;
-  let ka: ReturnType<typeof setInterval>;
-  let onlineTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  const finish = () => {
-    if (done) return;
-    done = true;
-    if (onlineTimeout) clearTimeout(onlineTimeout);
-    clearInterval(ka);
-    onEnd();
-  };
-
-  // onstart fires when audio actually begins playing
-  utt.onstart = () => {
-    started = true;
-    if (onlineTimeout) { clearTimeout(onlineTimeout); onlineTimeout = null; }
-  };
-
-  utt.onend = finish;
-  utt.onerror = (e) => {
-    if (e.error !== "interrupted" && e.error !== "canceled" && e.error !== "cancelled") {
-      console.warn("[TTS error]", e.error);
-    }
-    finish();
-  };
-
-  const doSpeak = () => {
-    if (done) return;
-    window.speechSynthesis.speak(utt);
-
-    // Online voice safety net: if onstart hasn't fired in 1.5s, the online
-    // voice silently failed → cancel and retry with browser default voice.
-    if (voice && !voice.localService && !_useDefault) {
-      onlineTimeout = setTimeout(() => {
-        if (!started && !done) {
-          console.warn("[TTS] Online voice timed out, falling back to default:", voice.name);
-          window.speechSynthesis.cancel();
-          ttsSpeak(text, onEnd, true); // retry with default
-        }
-      }, 1500);
+  const playNextChunk = () => {
+    if (isAudioCancelled || currentChunkIdx >= chunks.length) {
+      currentAudio = null;
+      onEnd();
+      return;
     }
 
-    // Keepalive for long responses (Chrome/Edge cut off after ~15s)
-    ka = setInterval(() => {
-      if (done) { clearInterval(ka); return; }
-      if (window.speechSynthesis.speaking) {
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      } else {
-        clearInterval(ka);
-      }
-    }, 10000);
+    const chunk = chunks[currentChunkIdx];
+    // tl=hi-IN forces the perfect Hindi/Hinglish accent universally
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=hi-IN&client=tw-ob&q=${encodeURIComponent(chunk)}`;
+    
+    const audio = new Audio(url);
+    currentAudio = audio;
+    
+    audio.onended = () => {
+      currentChunkIdx++;
+      playNextChunk();
+    };
+    
+    audio.onerror = (e) => {
+      console.warn("[TTS] Audio failed to load chunk, skipping...", e);
+      currentChunkIdx++;
+      playNextChunk();
+    };
+
+    audio.play().catch(e => {
+      console.warn("[TTS] Playback blocked by browser:", e);
+      currentAudio = null;
+      onEnd(); // End immediately if blocked
+    });
   };
 
-  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-    window.speechSynthesis.cancel();
-    setTimeout(doSpeak, 120);
-  } else {
-    doSpeak();
+  playNextChunk();
+}
+
+export function cancelTTS() {
+  isAudioCancelled = true;
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.src = "";
+    currentAudio = null;
   }
 }
 
@@ -188,14 +109,8 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
 
   const setTx = (t: string) => { transcriptRef.current = t; setTranscript(t); };
 
-  // Ensure voices are loaded (Chrome loads them lazily)
-  useEffect(() => {
-    if (!hasSpeech) return;
-    const load = () => { /* accessing getVoices() triggers caching */ getVoices(); };
-    load();
-    window.speechSynthesis.addEventListener("voiceschanged", load);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
-  }, []);
+  // Remove old window.speechSynthesis useEffect hooks
+  useEffect(() => {}, []);
 
   // ── Get AI reply ────────────────────────────────────────────────────────────
   const getAIReply = useCallback(async (userText: string): Promise<string> => {
@@ -462,7 +377,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
     speakingRef.current = false;
     errorRef.current = null;
     killRec();
-    if (hasSpeech) { try { window.speechSynthesis.cancel(); } catch (_) {} }
+    cancelTTS();
     setCallState("idle");
     setTx("");
     setAshaText("");
@@ -472,13 +387,13 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
   useEffect(() => () => {
     activeRef.current = false;
     killRec();
-    if (hasSpeech) { try { window.speechSynthesis.cancel(); } catch (_) {} }
+    cancelTTS();
   }, [killRec]);
 
   return {
     callState, transcript, ashaText, error,
     startCall, stopCall, sendText, clearError,
     startPTT, stopPTT,
-    hasSpeech, hasSR,
+    hasSpeech: true, hasSR,
   };
 }
