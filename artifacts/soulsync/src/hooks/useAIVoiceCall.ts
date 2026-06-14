@@ -56,6 +56,8 @@ function pickVoice(): SpeechSynthesisVoice | null {
     (v: SpeechSynthesisVoice) => v.lang === "en-GB" && /female/i.test(v.name),
     // Any female voice globally
     (v: SpeechSynthesisVoice) => /female|woman/i.test(v.name),
+    // Any English voice
+    (v: SpeechSynthesisVoice) => v.lang.startsWith("en"),
   ];
 
   for (const fn of priority) {
@@ -88,15 +90,12 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
 
   if (voice) {
     utt.voice = voice;
-    // If the chosen voice isn't natively Indian, force the browser to treat the text as Hindi
-    if (!/hi-IN|en-IN/i.test(voice.lang)) {
-      utt.lang = "hi-IN";
-    } else {
-      utt.lang = voice.lang;
-    }
+    utt.lang  = voice.lang;
   } else {
-    // When voice=null: browser uses its own default — force Hindi rules
-    utt.lang = "hi-IN";
+    // When voice=null: browser uses its own default — DO NOT force hi-IN here
+    // because if the OS doesn't have a Hindi voice installed, forcing hi-IN 
+    // causes the SpeechSynthesis engine to completely crash and stay silent!
+    utt.lang = "en-US";
   }
 
   utt.rate   = 0.88;
