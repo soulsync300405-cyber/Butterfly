@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { fetchGeminiDirect } from "@/lib/gemini";
+import { fetchGeminiDirect, fetchPsychReply } from "@/lib/gemini";
 import { analyzeVibeFromImage } from "@/lib/gemini-vision";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -2302,6 +2302,20 @@ function PsychTab() {
       fromRole: "user",
       time
     }).catch(err => console.warn("Firebase DM sync error (configure Firebase Realtime Database rules if real-time syncing is desired):", err));
+
+    // Automated psychologist response (local + AI fallback)
+    const psychObj = PSYCHOLOGISTS.find(p => p.id === pid || p.name === psychName);
+    const spec = psychObj?.specialization || "Mental Wellness & Counseling";
+
+    setTimeout(async () => {
+      const replyText = await fetchPsychReply(psychName, spec, text);
+      addPsychMessage(pid, {
+        id: Date.now(),
+        role: "psych",
+        text: replyText,
+        time: getTime(),
+      });
+    }, 1000);
   };
 
   useEffect(() => {

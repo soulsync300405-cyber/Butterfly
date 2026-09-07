@@ -243,3 +243,52 @@ export async function fetchGeminiDirect(
   const text = lastUserMsg?.content || lastUserMsg?.text || "";
   return getLocalResponse(text);
 }
+
+export async function fetchPsychReply(
+  psychName: string,
+  specialization: string,
+  userText: string
+): Promise<string> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+  const systemPrompt = `You are ${psychName}, a compassionate, highly experienced clinical psychologist specializing in ${specialization} for Indian students.
+Reply directly to your patient.
+STRICT RULES:
+- Be warm, professional, supportive, and grounding.
+- Maximum 2-3 sentences.
+- Speak in natural, comforting English/Hinglish.
+- No markdown, no bold text, no bullet points, no heavy clinical jargon.`;
+
+  if (apiKey) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: userText }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            generationConfig: { maxOutputTokens: 200, temperature: 0.7 },
+          }),
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const parts = data?.candidates?.[0]?.content?.parts ?? [];
+        const textPart = parts.find((p: any) => p.text && !p.thought);
+        const reply = (textPart?.text ?? parts[0]?.text ?? "").trim();
+        if (reply) return reply;
+      }
+    } catch (e) {
+      console.warn("[Psych AI Response Error]", e);
+    }
+  }
+
+  // Realistic fallback responses tailored to specialization
+  const fallbacks = [
+    `Hello! I've received your message. Take a deep breath — we can work through your ${specialization.toLowerCase()} together step by step. What feels most overwhelming right now?`,
+    `Thank you for reaching out and sharing this. Acknowledging your feelings is an important first step. How can I best support you today?`,
+    `I understand how challenging this feels. Managing ${specialization.toLowerCase()} takes patience, but you don't have to handle it alone. Let's take it one step at a time.`
+  ];
+  return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+}
