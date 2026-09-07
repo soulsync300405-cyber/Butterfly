@@ -205,6 +205,29 @@ function MessagesTab() {
       }
     }, (error) => console.warn(error));
 
+    // Multi-window sync polling (works across InPrivate and Normal windows)
+    let lastSyncTime = Date.now() - 5000;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sync/dms?since=${lastSyncTime}`);
+        if (res.ok) {
+          const items = await res.json();
+          if (Array.isArray(items) && items.length > 0) {
+            lastSyncTime = Date.now();
+            items.forEach((dm: any) => {
+              if (dm && dm.fromRole === "user") {
+                const studentName = dm.fromName;
+                setLiveDMs(prev => ({
+                  ...prev,
+                  [studentName]: [...(prev[studentName] || []), dm],
+                }));
+              }
+            });
+          }
+        }
+      } catch (_) {}
+    }, 1000);
+
     // Multi-tab BroadcastChannel listener for receiving DMs from Student
     try {
       const bc = new BroadcastChannel("soulsync_dms");
@@ -219,11 +242,15 @@ function MessagesTab() {
         }
       };
       return () => {
+        clearInterval(interval);
         off(ref(db, 'dms'), 'child_added', unsubscribe);
         bc.close();
       };
     } catch (_) {
-      return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+      return () => {
+        clearInterval(interval);
+        off(ref(db, 'dms'), 'child_added', unsubscribe);
+      };
     }
   }, []);
 
@@ -257,6 +284,12 @@ function MessagesTab() {
 
       push(ref(db, 'dms'), payload).catch(err => console.warn("Firebase DM sync error:", err));
 
+      fetch("/api/sync/dms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+
       try {
         const bc = new BroadcastChannel("soulsync_dms");
         bc.postMessage(payload);
@@ -278,6 +311,12 @@ function MessagesTab() {
       };
 
       push(ref(db, 'dms'), payload).catch(err => console.warn("Firebase DM sync error:", err));
+
+      fetch("/api/sync/dms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
 
       try {
         const bc = new BroadcastChannel("soulsync_dms");

@@ -2305,7 +2305,12 @@ function PsychTab() {
 
     push(ref(db, 'dms'), dmPayload).catch(err => console.warn("Firebase DM sync error:", err));
 
-    // BroadcastChannel for instant local multi-tab real-time DM with Psychologist
+    fetch("/api/sync/dms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(dmPayload),
+    }).catch(() => {});
+
     try {
       const bc = new BroadcastChannel("soulsync_dms");
       bc.postMessage(dmPayload);
@@ -2330,6 +2335,33 @@ function PsychTab() {
       }
     }, (error) => console.warn(error));
 
+    // Multi-window sync polling (works across InPrivate and Normal windows)
+    let lastSyncTime = Date.now() - 5000;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sync/dms?since=${lastSyncTime}`);
+        if (res.ok) {
+          const items = await res.json();
+          if (Array.isArray(items) && items.length > 0) {
+            lastSyncTime = Date.now();
+            items.forEach((dm: any) => {
+              if (dm && dm.fromRole === "psych") {
+                const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
+                if (psych) {
+                  addPsychMessage(psych.id, {
+                    id: dm.id || Date.now(),
+                    role: "psych",
+                    text: dm.text,
+                    time: dm.time || getTime(),
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (_) {}
+    }, 1000);
+
     // Local BroadcastChannel listener for multi-tab real-time psychologist DMs
     try {
       const bc = new BroadcastChannel("soulsync_dms");
@@ -2348,11 +2380,15 @@ function PsychTab() {
         }
       };
       return () => {
+        clearInterval(interval);
         off(ref(db, 'dms'), 'child_added', unsubscribe);
         bc.close();
       };
     } catch (_) {
-      return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+      return () => {
+        clearInterval(interval);
+        off(ref(db, 'dms'), 'child_added', unsubscribe);
+      };
     }
   }, [addPsychMessage]);
 
