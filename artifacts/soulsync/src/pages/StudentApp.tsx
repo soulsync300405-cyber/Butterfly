@@ -2295,19 +2295,33 @@ function PsychTab() {
     const msg = { id: Date.now(), role: "student" as const, text, time };
     addPsychMessage(pid, msg);
 
-    push(ref(db, 'dms'), {
+    const dmPayload = {
       toName: psychName,
       text,
       fromName: user?.name || "Anonymous",
       fromRole: "user",
       time
-    }).catch(err => console.warn("Firebase DM sync error (configure Firebase Realtime Database rules if real-time syncing is desired):", err));
+    };
 
-    // Automated psychologist response (local + AI fallback)
+    push(ref(db, 'dms'), dmPayload).catch(err => console.warn("Firebase DM sync error:", err));
+
+    // BroadcastChannel for instant local multi-tab real-time DM with Psychologist
+    try {
+      const bc = new BroadcastChannel("soulsync_dms");
+      bc.postMessage(dmPayload);
+      bc.close();
+    } catch (_) {}
+
+    // Automated psychologist AI response (if no live reply within 3 seconds)
     const psychObj = PSYCHOLOGISTS.find(p => p.id === pid || p.name === psychName);
     const spec = psychObj?.specialization || "Mental Wellness & Counseling";
 
     setTimeout(async () => {
+      // Check if user already got a live reply
+      const currentMsgs = useStore.getState().psychMessages[pid] || [];
+      const lastMsg = currentMsgs[currentMsgs.length - 1];
+      if (lastMsg && lastMsg.role === "psych") return; // Live reply received!
+
       const replyText = await fetchPsychReply(psychName, spec, text);
       addPsychMessage(pid, {
         id: Date.now(),
@@ -2315,7 +2329,7 @@ function PsychTab() {
         text: replyText,
         time: getTime(),
       });
-    }, 1000);
+    }, 3500);
   };
 
   useEffect(() => {
@@ -2333,10 +2347,32 @@ function PsychTab() {
           });
         }
       }
-    }, (error) => {
-      console.warn("Firebase DMs sync error. Are database rules configured?", error);
-    });
-    return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+    }, (error) => console.warn(error));
+
+    // Local BroadcastChannel listener for multi-tab real-time psychologist DMs
+    try {
+      const bc = new BroadcastChannel("soulsync_dms");
+      bc.onmessage = (event) => {
+        const dm = event.data;
+        if (dm && dm.fromRole === "psych" && (dm.toName === (user?.name || "Anonymous") || dm.toName === "All")) {
+          const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
+          if (psych) {
+            addPsychMessage(psych.id, {
+              id: dm.id || Date.now(),
+              role: "psych",
+              text: dm.text,
+              time: dm.time || getTime(),
+            });
+          }
+        }
+      };
+      return () => {
+        off(ref(db, 'dms'), 'child_added', unsubscribe);
+        bc.close();
+      };
+    } catch (_) {
+      return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+    }
   }, [addPsychMessage, user?.name]);
 
   const handleBook = (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => {

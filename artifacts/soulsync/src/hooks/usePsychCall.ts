@@ -181,12 +181,33 @@ export function usePsychCall() {
         setIncoming({
           roomId: snapshot.key as string,
           userSocketId: data.offer?.from || "user",
-          userName: "Student" // Can be passed in node
+          userName: data.userName || "Student"
         });
         setStatus("incoming");
       }
-    });
-    return () => off(ref(db, 'calls'), 'child_added', unsubscribe);
+    }, (error) => console.warn(error));
+
+    // Dual fallback: BroadcastChannel for instant local multi-tab calling
+    try {
+      const bc = new BroadcastChannel("soulsync_calls");
+      bc.onmessage = (event) => {
+        const data = event.data;
+        if (data && data.type === "ringing" && status === "idle") {
+          setIncoming({
+            roomId: data.roomId,
+            userSocketId: "user",
+            userName: data.userName || "Student"
+          });
+          setStatus("incoming");
+        }
+      };
+      return () => {
+        off(ref(db, 'calls'), 'child_added', unsubscribe);
+        bc.close();
+      };
+    } catch (_) {
+      return () => off(ref(db, 'calls'), 'child_added', unsubscribe);
+    }
   }, [status]);
 
   return {

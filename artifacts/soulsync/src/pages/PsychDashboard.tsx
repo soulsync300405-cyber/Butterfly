@@ -203,8 +203,28 @@ function MessagesTab() {
           [studentName]: [...(prev[studentName] || []), dm],
         }));
       }
-    });
-    return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+    }, (error) => console.warn(error));
+
+    // Multi-tab BroadcastChannel listener for receiving DMs from Student
+    try {
+      const bc = new BroadcastChannel("soulsync_dms");
+      bc.onmessage = (event) => {
+        const dm = event.data;
+        if (dm && dm.fromRole === "user") {
+          const studentName = dm.fromName;
+          setLiveDMs(prev => ({
+            ...prev,
+            [studentName]: [...(prev[studentName] || []), dm],
+          }));
+        }
+      };
+      return () => {
+        off(ref(db, 'dms'), 'child_added', unsubscribe);
+        bc.close();
+      };
+    } catch (_) {
+      return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
+    }
   }, []);
 
   const openConversation = (psychId: number, studentName?: string) => {
@@ -226,13 +246,22 @@ function MessagesTab() {
         ...prev,
         [activeStudentName]: [...(prev[activeStudentName] || []), myMsg],
       }));
-      push(ref(db, 'dms'), {
+
+      const payload = {
         toName: activeStudentName,
         text,
         fromName: "Dr. Priya Iyer",
         fromRole: "psych",
         time: getTime()
-      }).catch(err => console.warn("Firebase DM sync error:", err));
+      };
+
+      push(ref(db, 'dms'), payload).catch(err => console.warn("Firebase DM sync error:", err));
+
+      try {
+        const bc = new BroadcastChannel("soulsync_dms");
+        bc.postMessage(payload);
+        bc.close();
+      } catch (_) {}
       return;
     }
 
@@ -240,13 +269,21 @@ function MessagesTab() {
     const patientForPsych = allConversations.find(c => c.psychId === activePsychId);
     addPsychMessage(activePsychId, { id: Date.now(), role: "psych", text, time: getTime() });
     if (patientForPsych) {
-      push(ref(db, 'dms'), {
+      const payload = {
         toName: patientForPsych.patient.name,
         text,
         fromName: "Dr. Priya Iyer",
         fromRole: "psych",
         time: getTime()
-      }).catch(err => console.warn("Firebase DM sync error:", err));
+      };
+
+      push(ref(db, 'dms'), payload).catch(err => console.warn("Firebase DM sync error:", err));
+
+      try {
+        const bc = new BroadcastChannel("soulsync_dms");
+        bc.postMessage(payload);
+        bc.close();
+      } catch (_) {}
     }
   };
 

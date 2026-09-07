@@ -103,11 +103,17 @@ export function useStudentCall(userName: string) {
     const callRef = ref(db, `calls/${newRoomId}`);
     
     // We haven't created the offer yet, just signaling ringing
-    await set(callRef, {
+    set(callRef, {
       status: "ringing",
       userName: userName,
       offer: { from: clientId } // Just to let psych know who is calling
-    });
+    }).catch(() => {});
+
+    try {
+      const bc = new BroadcastChannel("soulsync_calls");
+      bc.postMessage({ type: "ringing", roomId: newRoomId, userName, psychName });
+      bc.close();
+    } catch (_) {}
 
     // Listen to status changes
     const statusRef = ref(db, `calls/${newRoomId}/status`);
