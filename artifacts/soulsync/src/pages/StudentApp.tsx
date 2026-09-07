@@ -2301,7 +2301,7 @@ function PsychTab() {
       fromName: user?.name || "Anonymous",
       fromRole: "user",
       time
-    });
+    }).catch(err => console.warn("Firebase DM sync error (configure Firebase Realtime Database rules if real-time syncing is desired):", err));
   };
 
   useEffect(() => {

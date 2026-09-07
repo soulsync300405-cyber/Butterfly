@@ -232,7 +232,7 @@ function MessagesTab() {
         fromName: "Dr. Priya Iyer",
         fromRole: "psych",
         time: getTime()
-      });
+      }).catch(err => console.warn("Firebase DM sync error:", err));
       return;
     }
 
@@ -246,7 +246,7 @@ function MessagesTab() {
         fromName: "Dr. Priya Iyer",
         fromRole: "psych",
         time: getTime()
-      });
+      }).catch(err => console.warn("Firebase DM sync error:", err));
     }
   };
 
