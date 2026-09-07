@@ -2319,6 +2319,8 @@ function PsychTab() {
           });
         }
       }
+    }, (error) => {
+      console.warn("Firebase DMs sync error. Are database rules configured?", error);
     });
     return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
   }, [addPsychMessage, user?.name]);
