@@ -2311,32 +2311,13 @@ function PsychTab() {
       bc.postMessage(dmPayload);
       bc.close();
     } catch (_) {}
-
-    // Automated psychologist AI response (if no live reply within 3 seconds)
-    const psychObj = PSYCHOLOGISTS.find(p => p.id === pid || p.name === psychName);
-    const spec = psychObj?.specialization || "Mental Wellness & Counseling";
-
-    setTimeout(async () => {
-      // Check if user already got a live reply
-      const currentMsgs = useStore.getState().psychMessages[pid] || [];
-      const lastMsg = currentMsgs[currentMsgs.length - 1];
-      if (lastMsg && lastMsg.role === "psych") return; // Live reply received!
-
-      const replyText = await fetchPsychReply(psychName, spec, text);
-      addPsychMessage(pid, {
-        id: Date.now(),
-        role: "psych",
-        text: replyText,
-        time: getTime(),
-      });
-    }, 3500);
   };
 
   useEffect(() => {
     const dmsRef = ref(db, `dms`);
     const unsubscribe = onChildAdded(dmsRef, (snapshot) => {
       const dm = snapshot.val();
-      if (dm && dm.fromRole === "psych" && dm.toName === (user?.name || "Anonymous")) {
+      if (dm && dm.fromRole === "psych") {
         const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
         if (psych) {
           addPsychMessage(psych.id, {
@@ -2354,7 +2335,7 @@ function PsychTab() {
       const bc = new BroadcastChannel("soulsync_dms");
       bc.onmessage = (event) => {
         const dm = event.data;
-        if (dm && dm.fromRole === "psych" && (dm.toName === (user?.name || "Anonymous") || dm.toName === "All")) {
+        if (dm && dm.fromRole === "psych") {
           const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName);
           if (psych) {
             addPsychMessage(psych.id, {
@@ -2373,7 +2354,7 @@ function PsychTab() {
     } catch (_) {
       return () => off(ref(db, 'dms'), 'child_added', unsubscribe);
     }
-  }, [addPsychMessage, user?.name]);
+  }, [addPsychMessage]);
 
   const handleBook = (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => {
     if (!bookPsych) return;
