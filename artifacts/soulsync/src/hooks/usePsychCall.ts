@@ -92,10 +92,24 @@ export function usePsychCall() {
     if (!incoming) return;
     setStatus("connecting");
     const rid = incoming.roomId;
-    
-    // Mark as active
-    set(ref(db, `calls/${rid}/status`), "active");
-    set(ref(db, `calls/${rid}/psychId`), clientId);
+
+    // 1. Dev server sync
+    fetch("/api/sync/calls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "accepted", roomId: rid }),
+    }).catch(() => {});
+
+    // 2. BroadcastChannel
+    try {
+      const bc = new BroadcastChannel("soulsync_calls");
+      bc.postMessage({ type: "accepted", roomId: rid });
+      bc.close();
+    } catch (_) {}
+
+    // 3. Firebase
+    set(ref(db, `calls/${rid}/status`), "active").catch(() => {});
+    set(ref(db, `calls/${rid}/psychId`), clientId).catch(() => {});
 
     setPeerId(incoming.userSocketId);
     setPeerName(incoming.userName);
@@ -116,51 +130,56 @@ export function usePsychCall() {
         await pc.setRemoteDescription(new RTCSessionDescription(data));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        
-        // Write Answer
+
         set(ref(db, `calls/${rid}/answer`), {
           type: answer.type,
           sdp: answer.sdp,
           from: clientId
-        });
+        }).catch(() => {});
       }
-    });
+    }, () => {});
 
-    // Listen for Remote ICE candidates
-    const remoteIceRef = ref(db, `calls/${rid}/iceCandidates/user`);
-    onChildAdded(remoteIceRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) pc.addIceCandidate(new RTCIceCandidate(data)).catch(() => {});
-    });
-    
-    // Listen for chat
-    const chatRef = ref(db, `calls/${rid}/chat`);
-    onChildAdded(chatRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) setMessages(prev => [...prev, data]);
-    });
+    // Transition to active
+    setTimeout(() => setStatus("active"), 600);
 
-    // Listen for call ended
-    const statusRef = ref(db, `calls/${rid}/status`);
-    onValue(statusRef, (snapshot) => {
-      if (snapshot.val() === "ended") {
-        cleanup();
-        setStatus("ended");
-        setTimeout(() => setStatus("idle"), 2500);
-      }
-    });
-
-  }, [incoming, setupPC, clientId, cleanup]);
+  }, [incoming, setupPC, clientId]);
 
   const decline = useCallback(() => {
     if (!incoming) return;
-    set(ref(db, `calls/${incoming.roomId}/status`), "ended");
+    const rid = incoming.roomId;
+    fetch("/api/sync/calls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "declined", roomId: rid }),
+    }).catch(() => {});
+
+    try {
+      const bc = new BroadcastChannel("soulsync_calls");
+      bc.postMessage({ type: "declined", roomId: rid });
+      bc.close();
+    } catch (_) {}
+
+    set(ref(db, `calls/${rid}/status`), "declined").catch(() => {});
     setIncoming(null);
     setStatus("idle");
   }, [incoming]);
 
   const endCall = useCallback(() => {
-    if (roomId) set(ref(db, `calls/${roomId}/status`), "ended");
+    if (roomId) {
+      fetch("/api/sync/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "ended", roomId }),
+      }).catch(() => {});
+
+      try {
+        const bc = new BroadcastChannel("soulsync_calls");
+        bc.postMessage({ type: "ended", roomId });
+        bc.close();
+      } catch (_) {}
+
+      set(ref(db, `calls/${roomId}/status`), "ended").catch(() => {});
+    }
     cleanup();
     setStatus("ended");
     setTimeout(() => setStatus("idle"), 2500);
@@ -168,26 +187,50 @@ export function usePsychCall() {
 
   const sendMessage = useCallback((text: string, senderName: string) => {
     if (!roomId || !text.trim()) return;
-    const chatRef = ref(db, `calls/${roomId}/chat`);
-    push(chatRef, { role: "psych", text: text.trim(), sender: senderName });
+    const msg = { role: "psych" as const, text: text.trim(), sender: senderName, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), id: Date.now() };
+    setMessages(p => [...p, msg]);
+
+    fetch("/api/sync/calls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "chat", roomId, ...msg }),
+    }).catch(() => {});
+
+    push(ref(db, `calls/${roomId}/chat`), msg).catch(() => {});
   }, [roomId]);
 
-  // Listen for incoming calls globally
+  // Listen for incoming calls & sync events
   useEffect(() => {
-    const callsRef = query(ref(db, 'calls'), orderByChild('status'), equalTo('ringing'));
-    const unsubscribe = onChildAdded(callsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.status === "ringing" && status === "idle") {
-        setIncoming({
-          roomId: snapshot.key as string,
-          userSocketId: data.offer?.from || "user",
-          userName: data.userName || "Student"
-        });
-        setStatus("incoming");
-      }
-    }, (error) => console.warn(error));
+    let lastSync = Date.now() - 3000;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sync/calls?since=${lastSync}`);
+        if (res.ok) {
+          const events = await res.json();
+          if (Array.isArray(events)) {
+            lastSync = Date.now();
+            for (const ev of events) {
+              if (ev.type === "ringing" && status === "idle") {
+                setIncoming({
+                  roomId: ev.roomId,
+                  userSocketId: "user",
+                  userName: ev.userName || "Student"
+                });
+                setStatus("incoming");
+              } else if (ev.type === "ended" && ev.roomId === roomId) {
+                cleanup();
+                setStatus("ended");
+                setTimeout(() => setStatus("idle"), 2000);
+              } else if (ev.type === "chat" && ev.roomId === roomId && ev.role === "user") {
+                setMessages(prev => [...prev, { id: Date.now(), role: "user", text: ev.text, time: ev.time || "now", sender: ev.sender || "Student" }]);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }, 700);
 
-    // Dual fallback: BroadcastChannel for instant local multi-tab calling
+    // BroadcastChannel listener
     try {
       const bc = new BroadcastChannel("soulsync_calls");
       bc.onmessage = (event) => {
@@ -199,16 +242,20 @@ export function usePsychCall() {
             userName: data.userName || "Student"
           });
           setStatus("incoming");
+        } else if (data && data.type === "ended" && data.roomId === roomId) {
+          cleanup();
+          setStatus("ended");
+          setTimeout(() => setStatus("idle"), 2000);
         }
       };
       return () => {
-        off(ref(db, 'calls'), 'child_added', unsubscribe);
+        clearInterval(interval);
         bc.close();
       };
     } catch (_) {
-      return () => off(ref(db, 'calls'), 'child_added', unsubscribe);
+      return () => clearInterval(interval);
     }
-  }, [status]);
+  }, [status, roomId, cleanup]);
 
   return {
     status, incoming, roomId, peerName, peerId,
