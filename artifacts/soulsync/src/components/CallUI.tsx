@@ -19,9 +19,22 @@ interface CallUIProps {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-async function requestStream(video: boolean = true): Promise<MediaStream | null> {
+async function requestStream(callType: "ai-voice" | "ai-video" | "psychologist"): Promise<MediaStream | null> {
+  // In pure AI voice calls, no camera or WebRTC stream is needed (mic is handled directly by useAIVoiceCall)
+  if (callType === "ai-voice") return null;
+
+  // In AI video calls, only camera is needed for visual emotion analysis — do not capture audio to avoid mic contention
+  if (callType === "ai-video") {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } catch {
+      return null;
+    }
+  }
+
+  // Psychologist WebRTC call needs both video and audio
   try {
-    return await navigator.mediaDevices.getUserMedia({ video, audio: true });
+    return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   } catch {
     try {
       return await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -31,7 +44,7 @@ async function requestStream(video: boolean = true): Promise<MediaStream | null>
   }
 }
 
-function useLocalStream(video: boolean = true) {
+function useLocalStream(callType: "ai-voice" | "ai-video" | "psychologist") {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [hasVideo, setHasVideo] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
@@ -39,14 +52,15 @@ function useLocalStream(video: boolean = true) {
   const [camOff, setCamOff] = useState(false);
 
   const start = useCallback(async () => {
-    const s = await requestStream(video);
+    if (callType === "ai-voice") return null;
+    const s = await requestStream(callType);
     if (s) {
       setStream(s);
       setHasVideo(s.getVideoTracks().length > 0);
       setHasAudio(s.getAudioTracks().length > 0);
     }
     return s;
-  }, [video]);
+  }, [callType]);
 
   const stop = useCallback(() => {
     stream?.getTracks().forEach(t => t.stop());
@@ -294,7 +308,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const [phase, setPhase] = useState<"permission" | "starting" | "active">("permission");
   const [voiceTestResult, setVoiceTestResult] = useState<"untested" | "ok" | "fail">("untested");
   const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const local = useLocalStream(type !== "ai-voice");
+  const local = useLocalStream(type);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [speakerMuted, setSpeakerMuted] = useState(false);
@@ -307,7 +321,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const aiCall = useAIVoiceCall(
     companion?.name || "Asha",
     companion?.voiceStyle,
-    "en-IN",
+    "hi-IN",
     companion?.gender
   );
 
@@ -672,7 +686,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                           width: 3,
                           background: aiSpeaking
                             ? `linear-gradient(to top, #3A7A52, ${i % 2 === 0 ? "#4CAF75" : "#34D399"})`
-                            : aiCall.isUserSpeaking
+                            : aiCall.isUserSpeaking || aiCall.micVolume > 8
                               ? `linear-gradient(to top, #2563EB, #60A5FA)`
                               : aiListening && !aiCall.isMuted
                                 ? `linear-gradient(to top, rgba(58,122,82,0.4), rgba(58,122,82,0.6))`
@@ -680,15 +694,55 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                         }}
                         animate={aiSpeaking
                           ? { height: [4, Math.random() * 28 + 8, 4] }
-                          : aiCall.isUserSpeaking
-                            ? { height: [4, Math.random() * 24 + 6, 4] }
+                          : aiCall.isUserSpeaking || aiCall.micVolume > 8
+                            ? { height: [4, Math.min(36, Math.max(8, (aiCall.micVolume / 100) * 36 + (i % 4) * 3)), 4] }
                             : aiListening && !aiCall.isMuted
-                              ? { height: [3, Math.random() * 10 + 4, 3] }
+                              ? { height: [3, Math.max(3, (aiCall.micVolume / 100) * 16 + 3), 3] }
                               : { height: 4 }}
-                        transition={{ duration: 0.2 + Math.random() * 0.25, repeat: Infinity, delay: i * 0.035 }}
+                        transition={{ duration: 0.15 + (i % 4) * 0.04, repeat: Infinity, delay: i * 0.02 }}
                       />
                     ))}
                   </div>
+
+                  {/* Real-time mic volume level badge */}
+                  {aiListening && !aiCall.isMuted && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -2 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-2 px-3.5 py-1.5 rounded-full border transition-all"
+                      style={{
+                        background: aiCall.micVolume > 8 ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                        borderColor: aiCall.micVolume > 8 ? "rgba(16, 185, 129, 0.4)" : "rgba(255, 255, 255, 0.1)"
+                      }}
+                    >
+                      <span className={`text-[11px] font-medium flex items-center gap-1.5 ${aiCall.micVolume > 8 ? "text-emerald-400 font-bold" : "text-white/50"}`}>
+                        <span className={`w-2 h-2 rounded-full ${aiCall.micVolume > 8 ? "bg-emerald-400 animate-pulse" : "bg-white/20"}`} />
+                        {aiCall.micVolume > 8 ? "Hearing your voice..." : "Mic active — speak now"}
+                      </span>
+                      {/* Audio Level Dots */}
+                      <div className="flex items-center gap-1 pl-1">
+                        {[10, 25, 45, 65, 85].map((lvl, idx) => (
+                          <div
+                            key={idx}
+                            className={`w-1.5 h-1.5 rounded-full transition-all duration-75 ${
+                              aiCall.micVolume >= lvl
+                                ? "bg-emerald-400 scale-125 shadow-sm shadow-emerald-400/60"
+                                : "bg-white/20 scale-100"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      {(aiCall.isUserSpeaking || aiCall.micVolume > 8) && (
+                        <button
+                          onClick={aiCall.commitCurrentSpeech}
+                          className="ml-1 px-2.5 py-0.5 rounded-md bg-primary hover:bg-primary/90 text-white font-bold text-[10px] cursor-pointer shadow transition-transform active:scale-95"
+                          title="Finish speaking & send now"
+                        >
+                          Done ➔
+                        </button>
+                      )}
+                    </motion.div>
+                  )}
                 </div>
 
                 {/* Transcript + response bubbles */}
@@ -776,12 +830,12 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                   {/* Speech Language & Voice Switcher Pills */}
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => aiCall.setLanguage(aiCall.speechLang === "en-IN" ? "hi-IN" : "en-IN")}
+                      onClick={() => aiCall.setLanguage(aiCall.speechLang === "hi-IN" ? "en-IN" : "hi-IN")}
                       className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white/80 font-medium transition-colors cursor-pointer flex items-center gap-1.5"
-                      title="Toggle speech recognition between Hinglish/English and Hindi"
+                      title="Toggle speech recognition between Hinglish/Hindi and English"
                     >
                       <span>🗣️</span>
-                      <span>Lang: <strong>{aiCall.speechLang === "en-IN" ? "Hinglish / EN" : "Hindi"}</strong></span>
+                      <span>Lang: <strong>{aiCall.speechLang === "hi-IN" ? "🇮🇳 Hinglish / Hindi" : "🌐 English"}</strong></span>
                     </button>
 
                     <button

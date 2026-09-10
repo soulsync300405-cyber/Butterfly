@@ -292,3 +292,85 @@ STRICT RULES:
   ];
   return fallbacks[Math.floor(Math.random() * fallbacks.length)];
 }
+
+export async function fetchGeminiAudioDirect(
+  audioBase64: string,
+  mimeType: string,
+  history: Array<{ role: string; content?: string; text?: string }>,
+  companionName = "Asha"
+): Promise<{ userTranscript: string; reply: string }> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+  const audioSystem = `${ASHA_SYSTEM}
+
+VOICE CALL AUDIO RECOGNITION MODE:
+- You are listening directly to a recorded audio clip of the student speaking to you.
+- First: accurately transcribe the student's spoken words (in Hinglish, Hindi, or English).
+- Second: reply warmly, conversationally, and empathetically as their companion ${companionName} in 2-3 spoken sentences.
+- Speak in natural, caring Hinglish/English.
+- NO markdown, NO bullet points, NO emojis, NO asterisks. Keep it purely conversational.
+- Return valid JSON matching:
+{"userTranscript": "transcription of what the student said in audio", "reply": "your 2-3 sentence spoken reply"}
+- If the audio is silent or unintelligible noise, return:
+{"userTranscript": "", "reply": "Aapki aawaaz thodi dheemi thi yaar, kya aap thoda zor se bol sakte ho?"}`;
+
+  if (apiKey) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              ...sanitizeMessagesForGemini(history),
+              {
+                role: "user",
+                parts: [
+                  { text: "Here is the audio recording of the student speaking to you right now. Please listen, transcribe their words, and reply:" },
+                  {
+                    inlineData: {
+                      mimeType: mimeType || "audio/webm",
+                      data: audioBase64
+                    }
+                  }
+                ]
+              }
+            ],
+            systemInstruction: { parts: [{ text: audioSystem }] },
+            generationConfig: {
+              maxOutputTokens: 250,
+              temperature: 0.85,
+              responseMimeType: "application/json"
+            }
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const parts = data?.candidates?.[0]?.content?.parts ?? [];
+        const textPart = parts.find((p: any) => p.text && !p.thought);
+        const raw = (textPart?.text ?? parts[0]?.text ?? "").trim();
+        try {
+          const parsed = JSON.parse(raw);
+          return {
+            userTranscript: parsed.userTranscript || "Spoke to Asha",
+            reply: parsed.reply || "Haan yaar, main sun rahi hoon. Thoda aur batao?"
+          };
+        } catch {
+          return {
+            userTranscript: "Spoke to Asha",
+            reply: raw.replace(/[*_`#[\](){}|~>]/g, "").trim()
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("[Gemini Audio]", e);
+    }
+  }
+
+  return {
+    userTranscript: "Voice message",
+    reply: `Haan yaar, main sun rahi hoon. Thoda aur detail mein batao?`
+  };
+}
