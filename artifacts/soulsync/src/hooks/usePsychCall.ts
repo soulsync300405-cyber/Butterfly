@@ -389,6 +389,120 @@ export function usePsychCall() {
     }
   }, []);
 
+  // Psychologist dials out to student
+  const dialPatient = useCallback(async (patientName: string, patientPeerId?: string) => {
+    if (statusRefState.current !== "idle") return;
+    setStatus("connecting");
+    const newRoomId = `room_psych_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    setRoomId(newRoomId);
+    setPeerName(patientName || "Student");
+
+    // Acquire stream
+    const stream = await getStream();
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+
+    // Broadcast calling signal via BroadcastChannel
+    try {
+      const bc = new BroadcastChannel("soulsync_calls");
+      bc.postMessage({
+        type: "psych-calling",
+        roomId: newRoomId,
+        psychName: "Dr. Priya Iyer",
+        studentName: patientName,
+        psychPeerId: "soulsync-psych-priya",
+      });
+      bc.close();
+    } catch (_) {}
+
+    // Dispatch local event for same-window testing
+    window.dispatchEvent(new CustomEvent("soulsync:psych-calling", {
+      detail: {
+        roomId: newRoomId,
+        psychName: "Dr. Priya Iyer",
+        studentName: patientName,
+      }
+    }));
+
+    // Firebase realtime db
+    set(ref(db, `calls/${newRoomId}`), {
+      status: "ringing-student",
+      psychName: "Dr. Priya Iyer",
+      studentName: patientName,
+      createdAt: Date.now(),
+    }).catch(() => {});
+
+    fetch("/api/sync/calls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "psych-calling",
+        roomId: newRoomId,
+        psychName: "Dr. Priya Iyer",
+        studentName: patientName,
+      }),
+    }).catch(() => {});
+
+    // Try direct peer connection if ID is available
+    const peer = peerRef.current;
+    if (peer && patientPeerId) {
+      try {
+        const conn = peer.connect(patientPeerId, { reliable: true });
+        connRef.current = conn;
+        conn.on("open", () => {
+          conn.send({
+            type: "psych-calling",
+            roomId: newRoomId,
+            psychName: "Dr. Priya Iyer",
+          });
+        });
+      } catch (_) {}
+    }
+
+    setTimeout(() => {
+      setStatus("active");
+    }, 800);
+  }, []);
+
+  // Send emergency clinical session override
+  const sendSessionOverride = useCallback((patientName: string, urgentNote: string) => {
+    const overridePayload = {
+      id: Date.now(),
+      type: "session-override",
+      psychName: "Dr. Priya Iyer",
+      patientName,
+      note: urgentNote.trim() || "Immediate clinical intervention requested by your psychologist. Please join the session.",
+      timestamp: Date.now(),
+      timeStr: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    // 1. Firebase Realtime DB
+    push(ref(db, "session_overrides"), overridePayload).catch(() => {});
+
+    // 2. BroadcastChannel
+    try {
+      const bc = new BroadcastChannel("soulsync_overrides");
+      bc.postMessage(overridePayload);
+      bc.close();
+    } catch (_) {}
+
+    // 3. Local DOM CustomEvent
+    window.dispatchEvent(new CustomEvent("soulsync:session-override", { detail: overridePayload }));
+
+    // 4. Send as DM so it shows in patient chat
+    push(ref(db, "dms"), {
+      id: Date.now(),
+      fromRole: "psych",
+      fromName: "Dr. Priya Iyer",
+      toName: patientName,
+      text: `🚨 [CLINICAL SESSION OVERRIDE] ${overridePayload.note}`,
+      time: overridePayload.timeStr,
+      isOverride: true,
+    }).catch(() => {});
+
+    return true;
+  }, []);
+
   return {
     status,
     incoming,
@@ -401,6 +515,8 @@ export function usePsychCall() {
     accept,
     decline,
     endCall,
+    dialPatient,
+    sendSessionOverride,
     sendMessage,
     sendDirectMessage,
   };

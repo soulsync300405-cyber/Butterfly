@@ -53,10 +53,22 @@ export type PsychBooking = {
   notes: string;
 };
 
+export type VibeScan = {
+  id: number;
+  emotion: string;
+  score: number;
+  fatigue: number;
+  focus: number;
+  timestamp: number;
+  timeStr: string;
+};
+
 type StoreState = {
   user: UserProfile | null;
   companion: Companion | null;
   completedQuests: number[];
+  questCompletions: Record<number, { completedAt: number; xpEarned: number }>;
+  vibeHistory: VibeScan[];
   settings: Settings;
   psychNotes: Record<number, string>;
   // Shared psych <-> student messaging (keyed by psychologist id)
@@ -70,6 +82,8 @@ type StoreState = {
   setUser: (u: UserProfile | null) => void;
   setCompanion: (c: Companion) => void;
   completeQuest: (id: number, xp: number) => void;
+  addVibeScan: (scan: Omit<VibeScan, 'id' | 'timestamp' | 'timeStr'>) => void;
+  incrementSessions: () => void;
   updateSettings: (s: Partial<Settings>) => void;
   setPsychNote: (patientId: number, note: string) => void;
   addPsychMessage: (psychId: number, msg: SharedMessage) => void;
@@ -87,6 +101,8 @@ export const useStore = create<StoreState>()(
       user: null,
       companion: null,
       completedQuests: [],
+      questCompletions: {},
+      vibeHistory: [],
       settings: {
         theme: 'beige',
         notifications: true,
@@ -107,11 +123,43 @@ export const useStore = create<StoreState>()(
       setUser: (u) => set({ user: u }),
       setCompanion: (c) => set({ companion: c }),
       completeQuest: (id, xp) =>
+        set((state) => {
+          const isNew = !state.completedQuests.includes(id);
+          const newCompleted = isNew ? [...state.completedQuests, id] : state.completedQuests;
+          const newXp = (state.user?.xp || 0) + xp;
+          const newLevel = Math.floor(newXp / 250) + 1;
+          const newCompletions = {
+            ...(state.questCompletions || {}),
+            [id]: { completedAt: Date.now(), xpEarned: xp },
+          };
+          return {
+            completedQuests: newCompleted,
+            questCompletions: newCompletions,
+            user: state.user
+              ? {
+                  ...state.user,
+                  xp: newXp,
+                  level: Math.max(state.user.level || 1, newLevel),
+                  streak: Math.max(state.user.streak || 1, 1),
+                }
+              : null,
+          };
+        }),
+      addVibeScan: (scan) =>
+        set((state) => {
+          const newScan: VibeScan = {
+            ...scan,
+            id: Date.now(),
+            timestamp: Date.now(),
+            timeStr: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+          return {
+            vibeHistory: [newScan, ...(state.vibeHistory || []).slice(0, 49)],
+          };
+        }),
+      incrementSessions: () =>
         set((state) => ({
-          completedQuests: state.completedQuests.includes(id)
-            ? state.completedQuests
-            : [...state.completedQuests, id],
-          user: state.user ? { ...state.user, xp: state.user.xp + xp } : null,
+          user: state.user ? { ...state.user, sessions: (state.user.sessions || 0) + 1 } : null,
         })),
       updateSettings: (s) =>
         set((state) => ({ settings: { ...state.settings, ...s } })),
@@ -150,6 +198,8 @@ export const useStore = create<StoreState>()(
           user: null,
           chatMessages: [],
           completedQuests: [],
+          questCompletions: {},
+          vibeHistory: [],
           psychMessages: {},
           psychBookings: {},
         });

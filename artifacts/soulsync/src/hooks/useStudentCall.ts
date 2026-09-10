@@ -67,6 +67,8 @@ export function useStudentCall(userName: string) {
   const [messages, setMessages]       = useState<LiveMsg[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ roomId: string; psychName: string; note?: string } | null>(null);
+  const [overrideAlert, setOverrideAlert] = useState<{ id: number; psychName: string; note: string; timestamp: number } | null>(null);
 
   const peerRef         = useRef<Peer | null>(null);
   const connRef         = useRef<DataConnection | null>(null);
@@ -101,6 +103,7 @@ export function useStudentCall(userName: string) {
     setRemoteStream(null);
     setMessages([]);
     setRoomId("");
+    setIncomingCall(null);
   }, []);
 
   // Initialize student's Peer instance
@@ -118,15 +121,32 @@ export function useStudentCall(userName: string) {
     });
 
     peer.on("connection", (conn) => {
+      connRef.current = conn;
       conn.on("data", (data: any) => {
-        if (data && data.type === "direct-message") {
+        if (!data || typeof data !== "object") return;
+        if (data.type === "direct-message") {
           window.dispatchEvent(new CustomEvent("soulsync:incoming-dm", { detail: data }));
+        } else if (data.type === "psych-calling" && statusRefState.current === "idle") {
+          setIncomingCall({
+            roomId: data.roomId,
+            psychName: data.psychName || "Dr. Priya Iyer",
+            note: data.note,
+          });
+          setPeerName(data.psychName || "Dr. Priya Iyer");
+          setRoomId(data.roomId);
+        } else if (data.type === "session-override") {
+          setOverrideAlert({
+            id: Date.now(),
+            psychName: data.psychName || "Dr. Priya Iyer",
+            note: data.note || "Priority Clinical Session Override Requested.",
+            timestamp: Date.now(),
+          });
         }
       });
     });
 
     peer.on("call", async (incomingMediaCall) => {
-      // Psychologist called us with media after accepting
+      // Psychologist called us with media
       let stream = localStreamRef.current;
       if (!stream) {
         stream = await getStream();
@@ -140,6 +160,7 @@ export function useStudentCall(userName: string) {
       incomingMediaCall.on("stream", (remote) => {
         setRemoteStream(remote);
         setStatus("active");
+        setIncomingCall(null);
       });
 
       incomingMediaCall.on("close", () => {
@@ -164,10 +185,76 @@ export function useStudentCall(userName: string) {
       }
     });
 
+    // Multi-tab BroadcastChannel listeners
+    let bcCalls: BroadcastChannel | null = null;
+    let bcOverrides: BroadcastChannel | null = null;
+    try {
+      bcCalls = new BroadcastChannel("soulsync_calls");
+      bcCalls.onmessage = (event) => {
+        const data = event.data;
+        if (data && data.type === "psych-calling" && statusRefState.current === "idle") {
+          setIncomingCall({
+            roomId: data.roomId,
+            psychName: data.psychName || "Dr. Priya Iyer",
+          });
+          setPeerName(data.psychName || "Dr. Priya Iyer");
+          setRoomId(data.roomId);
+        } else if (data && data.type === "ended" && statusRefState.current !== "idle") {
+          cleanup();
+          setStatus("ended");
+          setTimeout(() => setStatus("idle"), 2000);
+        }
+      };
+
+      bcOverrides = new BroadcastChannel("soulsync_overrides");
+      bcOverrides.onmessage = (event) => {
+        const data = event.data;
+        if (data && data.type === "session-override") {
+          setOverrideAlert({
+            id: data.id || Date.now(),
+            psychName: data.psychName || "Dr. Priya Iyer",
+            note: data.note || "Priority Clinical Session Override Requested.",
+            timestamp: data.timestamp || Date.now(),
+          });
+        }
+      };
+    } catch (_) {}
+
+    // Window event listeners for same-tab triggers
+    const handleDomCall = (e: any) => {
+      const data = e.detail;
+      if (data && statusRefState.current === "idle") {
+        setIncomingCall({
+          roomId: data.roomId,
+          psychName: data.psychName || "Dr. Priya Iyer",
+        });
+        setPeerName(data.psychName || "Dr. Priya Iyer");
+        setRoomId(data.roomId);
+      }
+    };
+    window.addEventListener("soulsync:psych-calling", handleDomCall);
+
+    const handleDomOverride = (e: any) => {
+      const data = e.detail;
+      if (data) {
+        setOverrideAlert({
+          id: data.id || Date.now(),
+          psychName: data.psychName || "Dr. Priya Iyer",
+          note: data.note || "Priority Clinical Session Override Requested.",
+          timestamp: data.timestamp || Date.now(),
+        });
+      }
+    };
+    window.addEventListener("soulsync:session-override", handleDomOverride);
+
     return () => {
       cleanup();
       peer.destroy();
       peerRef.current = null;
+      bcCalls?.close();
+      bcOverrides?.close();
+      window.removeEventListener("soulsync:psych-calling", handleDomCall);
+      window.removeEventListener("soulsync:session-override", handleDomOverride);
     };
   }, [cleanClientId, cleanup]);
 
@@ -343,6 +430,76 @@ export function useStudentCall(userName: string) {
     }
   }, [userName]);
 
+  // Accept incoming doctor call
+  const acceptIncomingCall = useCallback(async () => {
+    if (!incomingCall) return;
+    setStatus("connecting");
+    const rid = incomingCall.roomId;
+    setRoomId(rid);
+    setPeerName(incomingCall.psychName);
+
+    const stream = await getStream();
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+
+    // If psychologist called us directly with media connection
+    if (mediaCallRef.current) {
+      mediaCallRef.current.answer(stream || new MediaStream());
+    } else {
+      // Connect to psychologist peer if not yet media-connected
+      const peer = peerRef.current;
+      if (peer) {
+        try {
+          const mediaCall = peer.call("soulsync-psych-priya", stream || new MediaStream());
+          mediaCallRef.current = mediaCall;
+          mediaCall.on("stream", (remote) => {
+            setRemoteStream(remote);
+            setStatus("active");
+          });
+          mediaCall.on("close", () => {
+            setStatus("ended");
+            cleanup();
+            setTimeout(() => setStatus("idle"), 2000);
+          });
+        } catch (_) {}
+      }
+    }
+
+    if (connRef.current?.open) {
+      connRef.current.send({ type: "call-accepted", roomId: rid });
+    }
+
+    try {
+      const bc = new BroadcastChannel("soulsync_calls");
+      bc.postMessage({ type: "accepted", roomId: rid });
+      bc.close();
+    } catch (_) {}
+
+    setIncomingCall(null);
+    setStatus("active");
+  }, [incomingCall, cleanup]);
+
+  // Decline incoming doctor call
+  const declineIncomingCall = useCallback(() => {
+    if (connRef.current?.open) {
+      connRef.current.send({ type: "call-declined" });
+    }
+    if (incomingCall) {
+      try {
+        const bc = new BroadcastChannel("soulsync_calls");
+        bc.postMessage({ type: "declined", roomId: incomingCall.roomId });
+        bc.close();
+      } catch (_) {}
+    }
+    setIncomingCall(null);
+    setStatus("idle");
+  }, [incomingCall]);
+
+  // Dismiss session override alert
+  const dismissOverrideAlert = useCallback(() => {
+    setOverrideAlert(null);
+  }, []);
+
   return {
     status,
     roomId,
@@ -351,10 +508,16 @@ export function useStudentCall(userName: string) {
     messages,
     localStream,
     remoteStream,
+    incomingCall,
+    overrideAlert,
     dial,
     endCall,
     sendMessage,
     sendDirectMessage,
+    acceptIncomingCall,
+    declineIncomingCall,
+    dismissOverrideAlert,
   };
 }
+
 
