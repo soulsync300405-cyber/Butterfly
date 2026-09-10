@@ -48,7 +48,7 @@ export async function analyzeVibeFromImage(
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
   if (apiKey) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
       const base64Data = base64Image.split(',')[1] || base64Image;
 
       const prompt = `You are ${companion?.name || "Asha"}, an emotionally intelligent AI mental wellness companion for Indian college students.

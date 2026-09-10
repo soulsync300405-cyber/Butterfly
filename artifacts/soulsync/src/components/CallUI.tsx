@@ -506,7 +506,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                         <span className="text-[10px] text-white/40 pr-2">Hearing you in real time...</span>
                       </motion.div>
                     )}
-                    {aiCall.ashaText && (aiCall.callState === "speaking" || aiCall.callState === "thinking") && (
+                    {aiCall.ashaText && (
                       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                         <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm text-white/90 border border-primary/20 shadow-lg"
                           style={{ background: "rgba(58,122,82,0.25)", backdropFilter: "blur(8px)" }}>

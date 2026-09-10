@@ -31,42 +31,29 @@ function pickVoice(): SpeechSynthesisVoice | null {
   const voices = getVoices();
   if (!voices.length) return null;
 
-  // Log all voices once so we can see what's available
-  if (!(window as any).__voicesLogged) {
-    (window as any).__voicesLogged = true;
-    console.log("[Asha Voices available]:\n" +
-      voices.map(v => `  ${v.localService ? "✅LOCAL " : "☁️ONLINE"} | ${v.name} | ${v.lang}`).join("\n")
-    );
-  }
+  // 1. Local Indian voices first (zero network lag, never fails)
+  const localIndian = voices.find(v => v.localService && /hi-IN|en-IN/i.test(v.lang));
+  if (localIndian) return localIndian;
 
-  // Priority: natural-sounding neural female voices first.
-  // These sound much more human than local TTS voices.
-  const priority = [
-    // 🥇 Neerja/Swara — Indian female neural voices, perfect for Hinglish
-    (v: SpeechSynthesisVoice) => /neerja|swara/i.test(v.name),
-    // Indian female fallback
-    (v: SpeechSynthesisVoice) => /heera/i.test(v.name),
-    // Any female Indian voice (hi-IN or en-IN)
-    (v: SpeechSynthesisVoice) => /hi-IN|en-IN/i.test(v.lang) && /female|woman/i.test(v.name),
-    // Any Indian voice
-    (v: SpeechSynthesisVoice) => /hi-IN|en-IN/i.test(v.lang),
-    // Hindi generic
-    (v: SpeechSynthesisVoice) => /hindi/i.test(v.name),
-    // UK English female (sounds better for Hindi phonetics than US)
-    (v: SpeechSynthesisVoice) => v.lang === "en-GB" && /female/i.test(v.name),
-    // Any female voice globally
-    (v: SpeechSynthesisVoice) => /female|woman/i.test(v.name),
-    // Any English voice
-    (v: SpeechSynthesisVoice) => v.lang.startsWith("en"),
-  ];
+  // 2. High-quality neural Indian voices (Neerja, Swara, Heera)
+  const neuralIndian = voices.find(v => /neerja|swara|heera/i.test(v.name));
+  if (neuralIndian) return neuralIndian;
 
-  for (const fn of priority) {
-    const match = voices.find(fn);
-    if (match) {
-      console.log("[Asha] Using voice:", match.name, `(${match.lang})`, match.localService ? "LOCAL" : "ONLINE");
-      return match;
-    }
-  }
+  // 3. Any Indian voice
+  const anyIndian = voices.find(v => /hi-IN|en-IN/i.test(v.lang));
+  if (anyIndian) return anyIndian;
+
+  // 4. Any female voice (local preferred)
+  const localFemale = voices.find(v => v.localService && /female|woman/i.test(v.name));
+  if (localFemale) return localFemale;
+
+  const anyFemale = voices.find(v => /female|woman/i.test(v.name));
+  if (anyFemale) return anyFemale;
+
+  // 5. Default voice
+  const def = voices.find(v => v.default);
+  if (def) return def;
+
   return voices[0] ?? null;
 }
 
@@ -77,13 +64,18 @@ const SRClass: any = typeof window !== "undefined"
 export const hasSR = !!SRClass;
 
 // ── Core TTS with auto-fallback ───────────────────────────────────────────────
-// Tries the preferred voice. If it doesn't start within 1.5s (online voice
-// failing silently), cancels and retries with the browser's default voice.
 function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
   if (!hasSpeech || !text.trim()) {
-    setTimeout(onEnd, Math.min(text.length * 55, 5000));
+    setTimeout(onEnd, 800);
     return;
   }
+
+  // Ensure speech synthesis is active and not paused by Chrome
+  try {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+  } catch (_) {}
 
   const voice = _useDefault ? null : pickVoice();
   const utt = new SpeechSynthesisUtterance(text);
@@ -92,25 +84,24 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
     utt.voice = voice;
     utt.lang  = voice.lang;
   } else {
-    // When voice=null: browser uses its own default — DO NOT force hi-IN here
-    // because if the OS doesn't have a Hindi voice installed, forcing hi-IN 
-    // causes the SpeechSynthesis engine to completely crash and stay silent!
     utt.lang = "en-US";
   }
 
-  utt.rate   = 0.88;
-  utt.pitch  = 1.1;
+  utt.rate   = 0.9;
+  utt.pitch  = 1.05;
   utt.volume = 1;
 
   let started = false;
   let done    = false;
   let ka: ReturnType<typeof setInterval>;
   let onlineTimeout: ReturnType<typeof setTimeout> | null = null;
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
 
   const finish = () => {
     if (done) return;
     done = true;
-    if (onlineTimeout) clearTimeout(onlineTimeout);
+    if (onlineTimeout) { clearTimeout(onlineTimeout); onlineTimeout = null; }
+    if (watchdog) { clearTimeout(watchdog); watchdog = null; }
     clearInterval(ka);
     onEnd();
   };
@@ -131,21 +122,37 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
 
   const doSpeak = () => {
     if (done) return;
-    window.speechSynthesis.speak(utt);
+    try {
+      window.speechSynthesis.speak(utt);
+    } catch (err) {
+      console.warn("[TTS speak err]", err);
+      finish();
+      return;
+    }
 
-    // Online voice safety net: if onstart hasn't fired in 1.5s, the online
-    // voice silently failed → cancel and retry with browser default voice.
+    // Online voice safety net: if onstart hasn't fired in 1.2s, cancel & retry with default
     if (voice && !voice.localService && !_useDefault) {
       onlineTimeout = setTimeout(() => {
         if (!started && !done) {
-          console.warn("[TTS] Online voice timed out, falling back to default:", voice.name);
-          window.speechSynthesis.cancel();
+          console.warn("[TTS] Voice timed out, retrying with default voice:", voice.name);
+          // CRITICAL: detach listeners before cancelling so old utterance does NOT call finish()!
+          utt.onerror = null;
+          utt.onend = null;
+          try { window.speechSynthesis.cancel(); } catch (_) {}
           ttsSpeak(text, onEnd, true); // retry with default
         }
-      }, 1500);
+      }, 1200);
     }
 
-    // Keepalive for long responses (Chrome/Edge cut off after ~15s)
+    // Safety watchdog: after speech duration timeout, force finish so loop never locks
+    watchdog = setTimeout(() => {
+      if (!done) {
+        console.warn("[TTS watchdog] Speech timeout reached, continuing loop");
+        finish();
+      }
+    }, Math.max(text.length * 110, 6000));
+
+    // Keepalive for long responses (Chrome cuts off after ~15s)
     ka = setInterval(() => {
       if (done) { clearInterval(ka); return; }
       if (window.speechSynthesis.speaking) {
@@ -154,12 +161,12 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
       } else {
         clearInterval(ka);
       }
-    }, 10000);
+    }, 8000);
   };
 
   if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-    window.speechSynthesis.cancel();
-    setTimeout(doSpeak, 120);
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+    setTimeout(doSpeak, 80);
   } else {
     doSpeak();
   }
@@ -180,6 +187,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
   const activeRef         = useRef(false);
   const speakingRef       = useRef(false);
   const isMutedRef        = useRef(false);
+  const isProcessingRef   = useRef(false);
   const speechLangRef     = useRef<"en-IN" | "hi-IN">(defaultLang);
   const historyRef        = useRef<{ role: string; content: string }[]>([]);
   const recRef            = useRef<any>(null);
@@ -187,6 +195,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
   const silenceTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorRef          = useRef<string | null>(null);
   const transcriptRef     = useRef("");
+  const latestSpeechRef   = useRef("");
 
   // Self-ref avoids stale closure when startListening calls itself recursively
   const listenFnRef = useRef<() => void>(() => {});
@@ -196,7 +205,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
   // Ensure voices are loaded (Chrome loads them lazily)
   useEffect(() => {
     if (!hasSpeech) return;
-    const load = () => { /* accessing getVoices() triggers caching */ getVoices(); };
+    const load = () => { getVoices(); };
     load();
     window.speechSynthesis.addEventListener("voiceschanged", load);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
@@ -210,7 +219,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
     if (apiKey) {
       try {
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -258,15 +267,33 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
 
   // ── Process user speech → AI reply → speak ─────────────────────────────────
   const processSpoken = useCallback(async (text: string) => {
-    if (!activeRef.current) return;
+    if (!activeRef.current || isProcessingRef.current) return;
+    const cleanText = text.trim();
+    if (cleanText.length <= 1) return;
+
+    isProcessingRef.current = true;
     killRec();
 
     setCallState("thinking");
     setIsUserSpeaking(false);
-    historyRef.current.push({ role: "user", content: text });
+    setTx(cleanText);
+    historyRef.current.push({ role: "user", content: cleanText });
 
-    const reply = await getAIReply(text);
-    if (!activeRef.current) return;
+    let reply = "";
+    try {
+      reply = await getAIReply(cleanText);
+    } catch (err) {
+      console.warn("[Call AI reply err]", err);
+    }
+
+    if (!activeRef.current) {
+      isProcessingRef.current = false;
+      return;
+    }
+
+    if (!reply || !reply.trim()) {
+      reply = "Haan yaar, main sun rahi hoon. Thoda aur detail mein batao?";
+    }
 
     historyRef.current.push({ role: "assistant", content: reply });
     speakingRef.current = true;
@@ -275,16 +302,19 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
 
     ttsSpeak(reply, () => {
       speakingRef.current = false;
+      isProcessingRef.current = false;
+      latestSpeechRef.current = "";
+
       if (activeRef.current) {
         if (!isMutedRef.current) {
           setCallState("listening");
-          // Cooldown before opening mic so speaker echo/reverb doesn't re-enter mic
+          // 400ms cooldown so speaker echo does not re-enter mic
           setTimeout(() => {
             if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
               setTx("");
               listenFnRef.current();
             }
-          }, 350);
+          }, 400);
         } else {
           setCallState("listening");
         }
@@ -294,13 +324,13 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
 
   // ── Start listening — Hands-Free Continuous Loop with Silence Detection ─────
   const startListening = useCallback(() => {
-    if (!activeRef.current || speakingRef.current || isMutedRef.current) return;
+    if (!activeRef.current || speakingRef.current || isMutedRef.current || isProcessingRef.current) return;
     killRec();
 
     setCallState("listening");
-    setTx("");
     setIsUserSpeaking(false);
     errorRef.current = null;
+    latestSpeechRef.current = "";
 
     if (!hasSR) return;
 
@@ -315,7 +345,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
     let accumulatedFinal = "";
 
     rec.onresult = (e: any) => {
-      if (!activeRef.current || speakingRef.current) return;
+      if (!activeRef.current || speakingRef.current || isProcessingRef.current) return;
       let interimStr = "";
 
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -329,30 +359,31 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
 
       const combined = (accumulatedFinal + interimStr).trim();
       if (combined) {
+        latestSpeechRef.current = combined;
         setTx(combined);
         setIsUserSpeaking(true);
 
-        // Voice activity silence detection: when user pauses for 1300ms after speaking, commit automatically!
+        // Voice activity silence detection: when user pauses for 900ms after speaking, commit automatically!
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
-          if (activeRef.current && !speakingRef.current && combined.length > 1) {
-            processSpoken(combined);
+          if (activeRef.current && !speakingRef.current && !isProcessingRef.current) {
+            const speechToProcess = latestSpeechRef.current.trim();
+            if (speechToProcess.length > 1) {
+              processSpoken(speechToProcess);
+            }
           }
-        }, 1300);
+        }, 900);
       }
     };
 
     rec.onerror = (e: any) => {
       const err = e.error as string;
       if (err === "no-speech" || err === "aborted") {
-        // Natural idle pauses or intentional cancellation — do not treat as fatal error
         return;
       }
       errorRef.current = err;
       if (err === "not-allowed") {
         setError("Microphone permission denied. Allow mic access in browser.");
-      } else if (err === "network") {
-        console.warn("[SpeechRecognition] network warning");
       } else {
         console.warn("[SpeechRecognition error]", err);
       }
@@ -360,15 +391,15 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
 
     rec.onend = () => {
       recRef.current = null;
-      if (!activeRef.current || speakingRef.current || isMutedRef.current) return;
+      if (!activeRef.current || speakingRef.current || isMutedRef.current || isProcessingRef.current) return;
 
-      const pending = transcriptRef.current.trim();
-      if (pending.length > 1) {
-        processSpoken(pending);
+      const speechToProcess = latestSpeechRef.current.trim();
+      if (speechToProcess.length > 1) {
+        processSpoken(speechToProcess);
       } else {
-        // Restart smoothly if stopped by browser timeout while still listening
+        // Restart smoothly to keep mic listening
         restartRef.current = setTimeout(() => {
-          if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
+          if (activeRef.current && !speakingRef.current && !isMutedRef.current && !isProcessingRef.current) {
             listenFnRef.current();
           }
         }, 200);
