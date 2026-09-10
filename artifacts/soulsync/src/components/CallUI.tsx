@@ -209,18 +209,6 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const aiSpeaking = (type === "ai-voice" || type === "ai-video") && aiCall.callState === "speaking";
   const aiListening = (type === "ai-voice" || type === "ai-video") && aiCall.callState === "listening";
   const isAIBusy = aiCall.callState === "thinking" || aiCall.callState === "speaking";
-  const [isPTT, setIsPTT] = useState(false);
-
-  const handlePTTStart = () => {
-    if (isAIBusy) return;
-    setIsPTT(true);
-    aiCall.startPTT();
-  };
-  const handlePTTEnd = () => {
-    if (!isPTT) return;
-    setIsPTT(false);
-    aiCall.stopPTT();
-  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -375,26 +363,39 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                   <div className="flex items-center gap-3">
                     {/* Call state badge */}
                     <AnimatePresence mode="wait">
-                      {aiCall.callState === "listening" && (
+                      {aiCall.isMuted ? (
+                        <motion.div key="muted"
+                          initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/15">
+                          <MicOff size={12} className="text-red-400" />
+                          <span className="text-xs text-red-300 font-semibold">Mic Muted</span>
+                        </motion.div>
+                      ) : aiCall.isUserSpeaking ? (
+                        <motion.div key="user-speaking"
+                          initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/15">
+                          <motion.div animate={{ scale: [1, 1.5, 1] }} transition={{ duration: 0.6, repeat: Infinity }}
+                            className="w-2 h-2 rounded-full bg-blue-400" />
+                          <span className="text-xs text-blue-300 font-semibold">Hearing you...</span>
+                        </motion.div>
+                      ) : aiCall.callState === "listening" ? (
                         <motion.div key="listening"
                           initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-primary/30"
                           style={{ background: "rgba(58,122,82,0.15)" }}>
                           <motion.div animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 0.8, repeat: Infinity }}
                             className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          <span className="text-xs text-primary font-semibold">Listening</span>
+                          <span className="text-xs text-primary font-semibold">Listening (Speak now)</span>
                         </motion.div>
-                      )}
-                      {aiCall.callState === "thinking" && (
+                      ) : aiCall.callState === "thinking" ? (
                         <motion.div key="thinking"
                           initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-500/30"
                           style={{ background: "rgba(245,158,11,0.12)" }}>
                           <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.6, repeat: Infinity }}
-                            className="text-xs text-amber-400 font-semibold">Thinking...</motion.span>
+                            className="text-xs text-amber-400 font-semibold">Asha is thinking...</motion.span>
                         </motion.div>
-                      )}
-                      {aiCall.callState === "speaking" && (
+                      ) : aiCall.callState === "speaking" ? (
                         <motion.div key="speaking"
                           initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-emerald-500/30"
@@ -402,16 +403,20 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                           <Sparkles size={11} className="text-emerald-400" />
                           <span className="text-xs text-emerald-400 font-semibold">Speaking</span>
                         </motion.div>
-                      )}
+                      ) : null}
                     </AnimatePresence>
                     <span className="text-white/30 text-sm font-mono">{duration}</span>
                   </div>
                 </div>
 
                 {/* Avatar + waveform */}
-                <div className="flex flex-col items-center gap-8">
+                <div className="flex flex-col items-center gap-6">
                   {/* Outer pulsing ring */}
-                  <div className="relative">
+                  <div
+                    onClick={aiSpeaking ? aiCall.interruptAsha : undefined}
+                    className={`relative ${aiSpeaking ? "cursor-pointer" : ""}`}
+                    title={aiSpeaking ? "Click to interrupt Asha and speak" : ""}
+                  >
                     {aiSpeaking && (
                       <>
                         <motion.div animate={{ scale: [1, 1.25, 1], opacity: [0.2, 0, 0.2] }}
@@ -421,6 +426,11 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                           transition={{ duration: 1.8, repeat: Infinity, delay: 0.3 }}
                           className="absolute inset-0 rounded-full border border-primary" style={{ margin: -40 }} />
                       </>
+                    )}
+                    {aiCall.isUserSpeaking && (
+                      <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.35, 0, 0.35] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                        className="absolute inset-0 rounded-full border-2 border-blue-400" style={{ margin: -18 }} />
                     )}
                     <AnimeAvatar speaking={aiSpeaking} size={180}
                       style={companion?.appearance as any || "soft-pastel"}
@@ -435,6 +445,18 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                     <p className="text-white/40 text-sm">Your AI Wellness Companion</p>
                   </div>
 
+                  {/* Interrupt prompt when Asha is talking */}
+                  {aiSpeaking && (
+                    <motion.button
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      onClick={aiCall.interruptAsha}
+                      className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white/80 hover:text-white text-xs font-medium cursor-pointer transition-colors"
+                    >
+                      ✋ Tap to interrupt Asha
+                    </motion.button>
+                  )}
+
                   {/* Waveform */}
                   <div className="flex items-center gap-[3px]" style={{ height: 40 }}>
                     {bars.map((_, i) => (
@@ -443,15 +465,19 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                           width: 3,
                           background: aiSpeaking
                             ? `linear-gradient(to top, #3A7A52, ${i % 2 === 0 ? "#4CAF75" : "#34D399"})`
-                            : aiListening
-                              ? `linear-gradient(to top, rgba(58,122,82,0.4), rgba(58,122,82,0.6))`
-                              : "rgba(255,255,255,0.1)"
+                            : aiCall.isUserSpeaking
+                              ? `linear-gradient(to top, #2563EB, #60A5FA)`
+                              : aiListening && !aiCall.isMuted
+                                ? `linear-gradient(to top, rgba(58,122,82,0.4), rgba(58,122,82,0.6))`
+                                : "rgba(255,255,255,0.1)"
                         }}
                         animate={aiSpeaking
                           ? { height: [4, Math.random() * 28 + 8, 4] }
-                          : aiListening
-                            ? { height: [3, Math.random() * 10 + 4, 3] }
-                            : { height: 4 }}
+                          : aiCall.isUserSpeaking
+                            ? { height: [4, Math.random() * 24 + 6, 4] }
+                            : aiListening && !aiCall.isMuted
+                              ? { height: [3, Math.random() * 10 + 4, 3] }
+                              : { height: 4 }}
                         transition={{ duration: 0.2 + Math.random() * 0.25, repeat: Infinity, delay: i * 0.035 }}
                       />
                     ))}
@@ -463,17 +489,27 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                   <AnimatePresence>
                     {aiCall.transcript && (
                       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                        className="flex justify-end">
-                        <div className="max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-sm text-sm text-white"
-                          style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)" }}>
-                          {aiCall.transcript}
+                        className="flex flex-col items-end gap-1">
+                        <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-br-sm text-sm text-white flex items-center justify-between gap-3 shadow-lg"
+                          style={{ background: "rgba(37, 99, 235, 0.25)", border: "1px solid rgba(96, 165, 250, 0.3)", backdropFilter: "blur(8px)" }}>
+                          <span className="flex-1">{aiCall.transcript}</span>
+                          {aiCall.callState === "listening" && (
+                            <button
+                              onClick={aiCall.commitCurrentSpeech}
+                              title="Send now without waiting for pause"
+                              className="px-2 py-1 rounded-md bg-primary hover:bg-primary/80 text-[10px] font-bold text-white cursor-pointer transition-colors"
+                            >
+                              Send ➔
+                            </button>
+                          )}
                         </div>
+                        <span className="text-[10px] text-white/40 pr-2">Hearing you in real time...</span>
                       </motion.div>
                     )}
                     {aiCall.ashaText && (aiCall.callState === "speaking" || aiCall.callState === "thinking") && (
                       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm text-white/90 border border-primary/20"
-                          style={{ background: "rgba(58,122,82,0.2)", backdropFilter: "blur(8px)" }}>
+                        <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm text-white/90 border border-primary/20 shadow-lg"
+                          style={{ background: "rgba(58,122,82,0.25)", backdropFilter: "blur(8px)" }}>
                           {aiCall.ashaText}
                         </div>
                       </motion.div>
@@ -494,7 +530,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                       className="flex items-center justify-between px-3 py-2 rounded-xl border border-amber-500/30"
                       style={{ background: "rgba(245,158,11,0.08)" }}>
                       <span className="text-[10px] text-amber-400 font-semibold">
-                        ⚠️ Mic issue — type below
+                        ⚠️ {aiCall.error}
                       </span>
                       <button
                         onClick={aiCall.clearError}
@@ -511,7 +547,7 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                       type="text"
                       value={typeInput}
                       onChange={(e) => setTypeInput(e.target.value)}
-                      placeholder={isAIBusy ? "Asha is speaking..." : "Type if mic isn't working..."}
+                      placeholder={isAIBusy ? "Asha is speaking..." : "Type if in a quiet place..."}
                       disabled={isAIBusy}
                       className="flex-1 bg-transparent border-none text-white text-xs outline-none placeholder:text-white/25 disabled:opacity-40"
                       onKeyDown={(e) => {
@@ -529,78 +565,66 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                 </div>
 
                 {/* Controls */}
-                <div className="flex flex-col items-center gap-5">
+                <div className="flex flex-col items-center gap-4">
+                  {/* Speech Language Switcher Pill */}
+                  <button
+                    onClick={() => aiCall.setLanguage(aiCall.speechLang === "en-IN" ? "hi-IN" : "en-IN")}
+                    className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white/80 font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                    title="Toggle speech recognition between Hinglish/English and Hindi"
+                  >
+                    <span>🗣️</span>
+                    <span>Lang: <strong>{aiCall.speechLang === "en-IN" ? "Hinglish / EN" : "Hindi (हिंदी)"}</strong></span>
+                  </button>
 
-                  {/* ── Push-to-talk — primary interaction ── */}
-                  {aiCall.hasSR && (
-                    <div className="flex flex-col items-center gap-2">
-                      <motion.button
-                        onPointerDown={handlePTTStart}
-                        onPointerUp={handlePTTEnd}
-                        onPointerLeave={handlePTTEnd}
-                        onContextMenu={(e) => e.preventDefault()}
-                        disabled={isAIBusy}
-                        className="relative flex items-center justify-center focus:outline-none select-none touch-none"
-                        style={{ WebkitUserSelect: "none" }}
-                      >
-                        {/* Outer pulse ring — only when recording */}
-                        {isPTT && (
-                          <>
-                            <motion.div
-                              animate={{ scale: [1, 1.5, 1], opacity: [0.4, 0, 0.4] }}
-                              transition={{ duration: 1.2, repeat: Infinity }}
-                              className="absolute inset-0 rounded-full border-2 border-primary"
-                              style={{ margin: -16 }}
-                            />
-                            <motion.div
-                              animate={{ scale: [1, 1.8, 1], opacity: [0.2, 0, 0.2] }}
-                              transition={{ duration: 1.2, repeat: Infinity, delay: 0.3 }}
-                              className="absolute inset-0 rounded-full border border-primary"
-                              style={{ margin: -30 }}
-                            />
-                          </>
-                        )}
-                        {/* Main button */}
-                        <motion.div
-                          animate={isPTT
-                            ? { boxShadow: "0 0 32px rgba(58,122,82,0.6)" }
-                            : { boxShadow: "0 0 0px rgba(58,122,82,0)" }
-                          }
-                          transition={{ duration: 0.2 }}
-                          className={`w-24 h-24 rounded-full flex items-center justify-center border-2 transition-colors duration-150 ${
-                            isAIBusy
-                              ? "border-white/10 bg-white/5 cursor-not-allowed"
-                              : isPTT
-                                ? "border-primary bg-primary/40"
-                                : "border-primary/50 bg-primary/15 hover:bg-primary/25 cursor-pointer"
-                          }`}
-                        >
-                          <Mic size={32} className={isPTT ? "text-white" : isAIBusy ? "text-white/20" : "text-primary"} />
-                        </motion.div>
-                      </motion.button>
-                      <p className={`text-xs font-semibold transition-colors ${
-                        isPTT ? "text-primary" : isAIBusy ? "text-white/30" : "text-white/50"
-                      }`}>
-                        {isPTT ? "🔴 Listening… release to send" : isAIBusy ? "Wait for Asha…" : "Hold to speak"}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Secondary controls */}
+                  {/* Primary Controls */}
                   <div className="flex items-center gap-4">
-                    <CtrlBtn icon={speakerMuted ? VolumeX : Volume2} active={!speakerMuted}
-                      onClick={() => setSpeakerMuted(m => !m)} label="Speaker" />
-                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.93 }}
+                    {/* Mic Mute / Unmute Button */}
+                    <CtrlBtn
+                      icon={aiCall.isMuted ? MicOff : Mic}
+                      active={!aiCall.isMuted}
+                      onClick={aiCall.toggleMute}
+                      label={aiCall.isMuted ? "Unmute" : aiCall.isUserSpeaking ? "Hearing..." : "Mic On"}
+                    />
+
+                    {/* Speaker Mute / Unmute */}
+                    <CtrlBtn
+                      icon={speakerMuted ? VolumeX : Volume2}
+                      active={!speakerMuted}
+                      onClick={() => setSpeakerMuted(m => !m)}
+                      label="Speaker"
+                    />
+
+                    {/* End Call */}
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.93 }}
                       onClick={handleEnd}
-                      className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl shadow-red-900/40"
-                      style={{ background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)" }}>
+                      className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl shadow-red-900/40 cursor-pointer"
+                      style={{ background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)" }}
+                      title="End Call"
+                    >
                       <PhoneOff size={22} className="text-white" />
                     </motion.button>
+
+                    {/* Camera for video */}
                     {type !== "ai-voice" && (
-                      <CtrlBtn icon={local.camOff ? EyeOff : Camera} active={!local.camOff}
-                        onClick={local.toggleCam} label="Camera" />
+                      <CtrlBtn
+                        icon={local.camOff ? EyeOff : Camera}
+                        active={!local.camOff}
+                        onClick={local.toggleCam}
+                        label="Camera"
+                      />
                     )}
                   </div>
+
+                  {/* Real-time speech advisory hint */}
+                  <p className="text-[11px] text-white/40 text-center font-medium max-w-xs">
+                    {aiCall.isMuted
+                      ? "Mic muted — click Unmute when ready to talk"
+                      : aiCall.isUserSpeaking
+                        ? "🎙️ Hearing you live... pause to let Asha reply"
+                        : "🎙️ Hands-free mode: speak naturally, Asha will reply out loud"}
+                  </p>
                 </div>
 
 

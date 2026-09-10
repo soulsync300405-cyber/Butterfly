@@ -165,22 +165,28 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
   }
 }
 
-export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
+export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defaultLang: "en-IN" | "hi-IN" = "en-IN") {
   const [callState, setCallState] = useState<AICallState>("idle");
   const [transcript, setTranscript] = useState("");
   const [ashaText, setAshaText]   = useState("");
   const [error, setError]         = useState<string | null>(null);
+  const [isMuted, setIsMuted]     = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [speechLang, setSpeechLang] = useState<"en-IN" | "hi-IN">(defaultLang);
 
   const { user } = useStore();
   const userName = user?.name || "Student";
 
-  const activeRef      = useRef(false);
-  const speakingRef    = useRef(false);
-  const historyRef     = useRef<{ role: string; content: string }[]>([]);
-  const recRef         = useRef<any>(null);
-  const restartRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const errorRef       = useRef<string | null>(null);
-  const transcriptRef  = useRef("");
+  const activeRef         = useRef(false);
+  const speakingRef       = useRef(false);
+  const isMutedRef        = useRef(false);
+  const speechLangRef     = useRef<"en-IN" | "hi-IN">(defaultLang);
+  const historyRef        = useRef<{ role: string; content: string }[]>([]);
+  const recRef            = useRef<any>(null);
+  const restartRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorRef          = useRef<string | null>(null);
+  const transcriptRef     = useRef("");
 
   // Self-ref avoids stale closure when startListening calls itself recursively
   const listenFnRef = useRef<() => void>(() => {});
@@ -238,19 +244,25 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
   // ── Kill recognition instance ───────────────────────────────────────────────
   const killRec = useCallback(() => {
     if (restartRef.current) { clearTimeout(restartRef.current); restartRef.current = null; }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
     if (recRef.current) {
-      try { recRef.current.onend = null; recRef.current.onerror = null; recRef.current.abort(); } catch (_) {}
+      try {
+        recRef.current.onend = null;
+        recRef.current.onerror = null;
+        recRef.current.onresult = null;
+        recRef.current.abort();
+      } catch (_) {}
       recRef.current = null;
     }
   }, []);
 
   // ── Process user speech → AI reply → speak ─────────────────────────────────
-  // After Asha finishes, state goes to "listening" but mic stays OFF.
-  // User must press PTT button to speak again.
   const processSpoken = useCallback(async (text: string) => {
     if (!activeRef.current) return;
+    killRec();
+
     setCallState("thinking");
-    setTx("");
+    setIsUserSpeaking(false);
     historyRef.current.push({ role: "user", content: text });
 
     const reply = await getAIReply(text);
@@ -264,164 +276,176 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
     ttsSpeak(reply, () => {
       speakingRef.current = false;
       if (activeRef.current) {
-        // PTT mode: just go back to "listening" — mic stays silent
-        setCallState("listening");
+        if (!isMutedRef.current) {
+          setCallState("listening");
+          // Cooldown before opening mic so speaker echo/reverb doesn't re-enter mic
+          setTimeout(() => {
+            if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
+              setTx("");
+              listenFnRef.current();
+            }
+          }, 350);
+        } else {
+          setCallState("listening");
+        }
       }
     });
-  }, [getAIReply]);
+  }, [killRec, getAIReply]);
 
-  // ── Start listening — SIMPLE loop ───────────────────────────────────────────
-  // Pattern: start recognition → wait for onend → if text: process it, else: restart
+  // ── Start listening — Hands-Free Continuous Loop with Silence Detection ─────
   const startListening = useCallback(() => {
-    if (!activeRef.current || speakingRef.current) return;
+    if (!activeRef.current || speakingRef.current || isMutedRef.current) return;
     killRec();
 
     setCallState("listening");
     setTx("");
+    setIsUserSpeaking(false);
     errorRef.current = null;
 
-    if (!hasSR) {
-      // No SR support — text input is always visible, nothing more to do
-      return;
-    }
+    if (!hasSR) return;
 
     const rec = new SRClass();
     recRef.current = rec;
 
-    rec.lang = "en-IN";
+    rec.lang = speechLangRef.current;
+    rec.continuous = true;
     rec.interimResults = true;
-    rec.continuous = false;      // Chrome stops naturally after a pause — reliable
-    rec.maxAlternatives = 3;     // pick best of 3 alternatives
+    rec.maxAlternatives = 2;
 
-    let heard = "";              // accumulates final results
+    let accumulatedFinal = "";
 
     rec.onresult = (e: any) => {
+      if (!activeRef.current || speakingRef.current) return;
       let interimStr = "";
-      // Walk all results from this event
+
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         if (r.isFinal) {
-          heard += r[0].transcript + " ";
+          accumulatedFinal += r[0].transcript + " ";
         } else {
           interimStr += r[0].transcript;
         }
       }
-      // Show live transcript
-      setTx((heard + interimStr).trim());
+
+      const combined = (accumulatedFinal + interimStr).trim();
+      if (combined) {
+        setTx(combined);
+        setIsUserSpeaking(true);
+
+        // Voice activity silence detection: when user pauses for 1300ms after speaking, commit automatically!
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          if (activeRef.current && !speakingRef.current && combined.length > 1) {
+            processSpoken(combined);
+          }
+        }, 1300);
+      }
     };
 
     rec.onerror = (e: any) => {
       const err = e.error as string;
-      // These are not real errors — just restart
       if (err === "no-speech" || err === "aborted") {
-        recRef.current = null;
-        if (activeRef.current && !speakingRef.current) {
-          restartRef.current = setTimeout(() => listenFnRef.current(), 300);
-        }
+        // Natural idle pauses or intentional cancellation — do not treat as fatal error
         return;
       }
-      // Real errors
       errorRef.current = err;
-      recRef.current = null;
-      if (err === "network") {
-        setError("Internet needed for voice recognition. Type below:");
-      } else if (err === "not-allowed") {
-        setError("Microphone blocked. Allow mic in browser and reload.");
+      if (err === "not-allowed") {
+        setError("Microphone permission denied. Allow mic access in browser.");
+      } else if (err === "network") {
+        console.warn("[SpeechRecognition] network warning");
       } else {
-        setError(`Mic error (${err}). Type your message below:`);
+        console.warn("[SpeechRecognition error]", err);
       }
     };
 
-    // onend fires every time recognition stops — with or without speech
     rec.onend = () => {
       recRef.current = null;
-      if (!activeRef.current || speakingRef.current) return;
-      if (errorRef.current) return; // error already shown
+      if (!activeRef.current || speakingRef.current || isMutedRef.current) return;
 
-      const spokenText = heard.trim();
-      heard = "";
-
-      if (spokenText.length > 1) {
-        // Got speech — process it
-        processSpoken(spokenText);
+      const pending = transcriptRef.current.trim();
+      if (pending.length > 1) {
+        processSpoken(pending);
       } else {
-        // Nothing heard — keep listening
-        restartRef.current = setTimeout(() => listenFnRef.current(), 250);
+        // Restart smoothly if stopped by browser timeout while still listening
+        restartRef.current = setTimeout(() => {
+          if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
+            listenFnRef.current();
+          }
+        }, 200);
       }
     };
 
     try {
       rec.start();
     } catch (startErr: any) {
-      // "Already started" or other — short delay then retry
       console.warn("[SR start]", startErr?.message);
       recRef.current = null;
-      restartRef.current = setTimeout(() => listenFnRef.current(), 500);
+      restartRef.current = setTimeout(() => listenFnRef.current(), 400);
     }
   }, [killRec, processSpoken]);
 
-  // Keep ref current (avoids stale closure in recursive restart)
+  // Keep ref current to avoid stale closure in recursive restarts
   useEffect(() => { listenFnRef.current = startListening; }, [startListening]);
 
-  // ── Push-to-talk: START (hold button) ──────────────────────────────────────
-  const startPTT = useCallback(() => {
-    if (!activeRef.current || speakingRef.current) return;
-    killRec();
-    setCallState("listening");
-    setTx("");
-    errorRef.current = null;
-    if (!hasSR) return;
-
-    const rec = new SRClass();
-    recRef.current = rec;
-    rec.lang = "en-IN";
-    rec.interimResults = true;
-    rec.continuous = true;   // stays open while button is held
-    rec.maxAlternatives = 3;
-    let heard = "";
-
-    rec.onresult = (e: any) => {
-      let interimStr = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) heard += r[0].transcript + " ";
-        else interimStr += r[0].transcript;
-      }
-      setTx((heard + interimStr).trim());
-      transcriptRef.current = (heard + interimStr).trim();
-    };
-    rec.onerror = (e: any) => {
-      if (e.error === "not-allowed") {
-        setError("Microphone blocked. Allow mic in browser settings.");
-      }
-    };
-    rec.onend = () => {}; // handled by stopPTT
-
-    try { rec.start(); } catch (_) {}
-  }, [killRec]);
-
-  // ── Push-to-talk: STOP (release button) ────────────────────────────────────
-  const stopPTT = useCallback(() => {
-    if (!recRef.current) return;
-    const rec = recRef.current;
-
-    rec.onend = () => {
-      recRef.current = null;
-      const text = transcriptRef.current.trim();
+  // ── Interrupt Asha immediately ─────────────────────────────────────────────
+  const interruptAsha = useCallback(() => {
+    if (!activeRef.current) return;
+    if (hasSpeech) {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+    }
+    speakingRef.current = false;
+    if (!isMutedRef.current) {
+      setCallState("listening");
       setTx("");
-      transcriptRef.current = "";
-      if (text.length > 1 && activeRef.current) {
-        processSpoken(text);
-      } else {
-        // Nothing heard — just go back to idle listening state, wait for next PTT
-        if (activeRef.current) setCallState("listening");
-      }
-    };
+      startListening();
+    }
+  }, [startListening]);
 
-    try { rec.stop(); } catch (_) { recRef.current = null; }
+  // ── Commit current speech immediately (Skip silence wait) ───────────────────
+  const commitCurrentSpeech = useCallback(() => {
+    const text = transcriptRef.current.trim();
+    if (text.length > 0 && activeRef.current) {
+      processSpoken(text);
+    }
   }, [processSpoken]);
 
-  // ── sendText typed input ─────────────────────────────────────────────────────
+  // ── Mic Mute / Unmute ──────────────────────────────────────────────────────
+  const toggleMute = useCallback(() => {
+    setIsMuted(prev => {
+      const next = !prev;
+      isMutedRef.current = next;
+      if (next) {
+        killRec();
+        setIsUserSpeaking(false);
+      } else {
+        if (activeRef.current && !speakingRef.current) {
+          startListening();
+        }
+      }
+      return next;
+    });
+  }, [killRec, startListening]);
+
+  // ── Language Selector ──────────────────────────────────────────────────────
+  const setLanguage = useCallback((lang: "en-IN" | "hi-IN") => {
+    setSpeechLang(lang);
+    speechLangRef.current = lang;
+    if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
+      startListening();
+    }
+  }, [startListening]);
+
+  // ── Push-to-talk backwards compatibility ───────────────────────────────────
+  const startPTT = useCallback(() => {
+    if (isMutedRef.current) toggleMute();
+    startListening();
+  }, [toggleMute, startListening]);
+
+  const stopPTT = useCallback(() => {
+    commitCurrentSpeech();
+  }, [commitCurrentSpeech]);
+
+  // ── Send typed text ────────────────────────────────────────────────────────
   const sendText = useCallback(async (text: string) => {
     if (!text.trim() || !activeRef.current) return;
     killRec();
@@ -431,40 +455,55 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
   const clearError = useCallback(() => {
     setError(null);
     errorRef.current = null;
-    // PTT mode: don't auto-start mic, just clear the error
-  }, []);
+    if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
+      startListening();
+    }
+  }, [startListening]);
+
   // ── startCall ───────────────────────────────────────────────────────────────
   const startCall = useCallback(() => {
     activeRef.current = true;
     speakingRef.current = true;
+    isMutedRef.current = false;
+    setIsMuted(false);
+    setIsUserSpeaking(false);
     errorRef.current = null;
     historyRef.current = [];
     setError(null);
     setTx("");
     setCallState("speaking");
 
-    const greeting = `Hey ${userName}! Main ${companionName} hoon. Aaj kaisa feel ho raha hai? Button dabao aur bolo.`;
+    const greeting = `Hey ${userName}! Main ${companionName} hoon. Aaj kaisa lag raha hai? Main sun rahi hoon, batao.`;
     setAshaText(greeting);
     historyRef.current.push({ role: "assistant", content: greeting });
 
     ttsSpeak(greeting, () => {
       speakingRef.current = false;
-      if (activeRef.current) {
-        // PTT mode: mic stays off, wait for user to press button
+      if (activeRef.current && !isMutedRef.current) {
         setCallState("listening");
+        setTimeout(() => {
+          if (activeRef.current && !speakingRef.current && !isMutedRef.current) {
+            setTx("");
+            startListening();
+          }
+        }, 350);
       }
     });
-  }, [companionName, userName]);
+  }, [companionName, userName, startListening]);
 
+  // ── stopCall ────────────────────────────────────────────────────────────────
   const stopCall = useCallback(() => {
     activeRef.current = false;
     speakingRef.current = false;
+    isMutedRef.current = false;
     errorRef.current = null;
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
     killRec();
     if (hasSpeech) { try { window.speechSynthesis.cancel(); } catch (_) {} }
     setCallState("idle");
     setTx("");
     setAshaText("");
+    setIsUserSpeaking(false);
     setError(null);
   }, [killRec]);
 
@@ -476,7 +515,9 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
 
   return {
     callState, transcript, ashaText, error,
+    isMuted, isUserSpeaking, speechLang,
     startCall, stopCall, sendText, clearError,
+    toggleMute, setLanguage, interruptAsha, commitCurrentSpeech,
     startPTT, stopPTT,
     hasSpeech, hasSR,
   };
