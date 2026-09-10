@@ -27,34 +27,128 @@ function getVoices(): SpeechSynthesisVoice[] {
   return typeof window !== "undefined" ? window.speechSynthesis.getVoices() : [];
 }
 
-function pickVoice(): SpeechSynthesisVoice | null {
+export interface VoicePersona {
+  id: string;
+  name: string;
+  emoji: string;
+  gender: "female" | "male";
+  accent: string;
+  pitch: number;
+  rate: number;
+  description: string;
+  searchFilter: (v: SpeechSynthesisVoice) => boolean;
+}
+
+export const VOICE_PERSONAS: VoicePersona[] = [
+  {
+    id: "asha-warm",
+    name: "Asha",
+    emoji: "🌸",
+    gender: "female",
+    accent: "Warm Indian Female",
+    pitch: 1.08,
+    rate: 0.90,
+    description: "Empathetic, warm, older sister companion",
+    searchFilter: (v) => /neerja|swara|heera/i.test(v.name) || (/hi-IN|en-IN/i.test(v.lang) && /female|woman/i.test(v.name)),
+  },
+  {
+    id: "ananya-calm",
+    name: "Ananya",
+    emoji: "🌿",
+    gender: "female",
+    accent: "Soft & Soothing",
+    pitch: 1.16,
+    rate: 0.82,
+    description: "Very gentle, mindful, relaxed tone for anxiety relief",
+    searchFilter: (v) => /neerja|swara|heera/i.test(v.name) || (/hi-IN|en-IN/i.test(v.lang) && /female/i.test(v.name)),
+  },
+  {
+    id: "riya-energetic",
+    name: "Riya",
+    emoji: "⚡",
+    gender: "female",
+    accent: "Cheerful Hinglish",
+    pitch: 1.12,
+    rate: 1.00,
+    description: "Upbeat, lively, cheerful best-friend energy",
+    searchFilter: (v) => /neerja|heera|swara/i.test(v.name) || (/hi-IN|en-IN/i.test(v.lang) && /female/i.test(v.name)),
+  },
+  {
+    id: "arjun-male",
+    name: "Arjun",
+    emoji: "👔",
+    gender: "male",
+    accent: "Calm Indian Male",
+    pitch: 0.90,
+    rate: 0.88,
+    description: "Supportive, grounded brotherly companion",
+    searchFilter: (v) => /ravi|prabhat|madhav|arjun/i.test(v.name) || (/hi-IN|en-IN/i.test(v.lang) && /male|man/i.test(v.name)),
+  },
+  {
+    id: "kabir-deep",
+    name: "Kabir",
+    emoji: "🎙️",
+    gender: "male",
+    accent: "Deep Indian Male",
+    pitch: 0.78,
+    rate: 0.85,
+    description: "Deep, reassuring, strong grounding voice",
+    searchFilter: (v) => /ravi|prabhat|david|mark|george/i.test(v.name) || /male|man/i.test(v.name),
+  },
+  {
+    id: "grace-global",
+    name: "Grace",
+    emoji: "🌐",
+    gender: "female",
+    accent: "Natural Global English",
+    pitch: 1.05,
+    rate: 0.92,
+    description: "Polite, crystal-clear international accent",
+    searchFilter: (v) => (v.lang === "en-GB" || v.lang === "en-US") && /female/i.test(v.name),
+  },
+];
+
+function pickVoice(
+  persona?: VoicePersona,
+  customVoiceURI?: string
+): { voice: SpeechSynthesisVoice | null; pitch: number; rate: number } {
   const voices = getVoices();
-  if (!voices.length) return null;
+  const activePersona = persona || VOICE_PERSONAS[0];
+  const targetPitch = activePersona.pitch;
+  const targetRate = activePersona.rate;
 
-  // 1. Local Indian voices first (zero network lag, never fails)
-  const localIndian = voices.find(v => v.localService && /hi-IN|en-IN/i.test(v.lang));
-  if (localIndian) return localIndian;
+  if (!voices.length) {
+    return { voice: null, pitch: targetPitch, rate: targetRate };
+  }
 
-  // 2. High-quality neural Indian voices (Neerja, Swara, Heera)
-  const neuralIndian = voices.find(v => /neerja|swara|heera/i.test(v.name));
-  if (neuralIndian) return neuralIndian;
+  // 1. Explicit user-selected device voice
+  if (customVoiceURI) {
+    const custom = voices.find(v => v.voiceURI === customVoiceURI || v.name === customVoiceURI);
+    if (custom) return { voice: custom, pitch: targetPitch, rate: targetRate };
+  }
 
-  // 3. Any Indian voice
-  const anyIndian = voices.find(v => /hi-IN|en-IN/i.test(v.lang));
-  if (anyIndian) return anyIndian;
+  // 2. Persona search filter
+  const personaMatch = voices.find(activePersona.searchFilter);
+  if (personaMatch) return { voice: personaMatch, pitch: targetPitch, rate: targetRate };
 
-  // 4. Any female voice (local preferred)
-  const localFemale = voices.find(v => v.localService && /female|woman/i.test(v.name));
-  if (localFemale) return localFemale;
+  // 3. Indian voices matching gender
+  if (activePersona.gender === "male") {
+    const maleInd = voices.find(v => /hi-IN|en-IN/i.test(v.lang) && !/female|woman/i.test(v.name));
+    if (maleInd) return { voice: maleInd, pitch: targetPitch, rate: targetRate };
+    const anyMale = voices.find(v => /male|man/i.test(v.name) || (v.lang.startsWith("en") && !/female|woman/i.test(v.name)));
+    if (anyMale) return { voice: anyMale, pitch: targetPitch, rate: targetRate };
+  } else {
+    const localIndian = voices.find(v => v.localService && /hi-IN|en-IN/i.test(v.lang));
+    if (localIndian) return { voice: localIndian, pitch: targetPitch, rate: targetRate };
+    const anyIndian = voices.find(v => /hi-IN|en-IN/i.test(v.lang));
+    if (anyIndian) return { voice: anyIndian, pitch: targetPitch, rate: targetRate };
+    const anyFemale = voices.find(v => /female|woman/i.test(v.name));
+    if (anyFemale) return { voice: anyFemale, pitch: targetPitch, rate: targetRate };
+  }
 
-  const anyFemale = voices.find(v => /female|woman/i.test(v.name));
-  if (anyFemale) return anyFemale;
-
-  // 5. Default voice
-  const def = voices.find(v => v.default);
-  if (def) return def;
-
-  return voices[0] ?? null;
+  // 4. Default voice
+  const def = voices.find(v => v.default) || voices[0] || null;
+  return { voice: def, pitch: targetPitch, rate: targetRate };
 }
 
 const hasSpeech = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -64,7 +158,13 @@ const SRClass: any = typeof window !== "undefined"
 export const hasSR = !!SRClass;
 
 // ── Core TTS with auto-fallback ───────────────────────────────────────────────
-function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
+function ttsSpeak(
+  text: string,
+  onEnd: () => void,
+  persona?: VoicePersona,
+  customVoiceURI?: string,
+  _useDefault = false
+): void {
   if (!hasSpeech || !text.trim()) {
     setTimeout(onEnd, 800);
     return;
@@ -77,18 +177,21 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
     }
   } catch (_) {}
 
-  const voice = _useDefault ? null : pickVoice();
+  const picked = _useDefault
+    ? { voice: null, pitch: persona ? persona.pitch : 1, rate: persona ? persona.rate : 0.9 }
+    : pickVoice(persona, customVoiceURI);
+
   const utt = new SpeechSynthesisUtterance(text);
 
-  if (voice) {
-    utt.voice = voice;
-    utt.lang  = voice.lang;
+  if (picked.voice) {
+    utt.voice = picked.voice;
+    utt.lang  = picked.voice.lang;
   } else {
     utt.lang = "en-US";
   }
 
-  utt.rate   = 0.9;
-  utt.pitch  = 1.05;
+  utt.rate   = picked.rate;
+  utt.pitch  = picked.pitch;
   utt.volume = 1;
 
   let started = false;
@@ -131,15 +234,14 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
     }
 
     // Online voice safety net: if onstart hasn't fired in 1.2s, cancel & retry with default
-    if (voice && !voice.localService && !_useDefault) {
+    if (picked.voice && !picked.voice.localService && !_useDefault) {
       onlineTimeout = setTimeout(() => {
         if (!started && !done) {
-          console.warn("[TTS] Voice timed out, retrying with default voice:", voice.name);
-          // CRITICAL: detach listeners before cancelling so old utterance does NOT call finish()!
+          console.warn("[TTS] Voice timed out, retrying with default voice:", picked.voice?.name);
           utt.onerror = null;
           utt.onend = null;
           try { window.speechSynthesis.cancel(); } catch (_) {}
-          ttsSpeak(text, onEnd, true); // retry with default
+          ttsSpeak(text, onEnd, persona, customVoiceURI, true);
         }
       }, 1200);
     }
@@ -172,7 +274,12 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
   }
 }
 
-export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defaultLang: "en-IN" | "hi-IN" = "en-IN") {
+export function useAIVoiceCall(
+  companionName: string,
+  voiceStyle?: string,
+  defaultLang: "en-IN" | "hi-IN" = "en-IN",
+  companionGender?: "female" | "male" | "nonbinary" | string
+) {
   const [callState, setCallState] = useState<AICallState>("idle");
   const [transcript, setTranscript] = useState("");
   const [ashaText, setAshaText]   = useState("");
@@ -180,6 +287,35 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
   const [isMuted, setIsMuted]     = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [speechLang, setSpeechLang] = useState<"en-IN" | "hi-IN">(defaultLang);
+
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("soulsync_voice_persona");
+      if (saved && VOICE_PERSONAS.some(p => p.id === saved)) return saved;
+    }
+    if (companionGender === "male") return "arjun-male";
+    if (voiceStyle === "Energetic" || voiceStyle === "Witty") return "riya-energetic";
+    if (voiceStyle === "Calm") return "ananya-calm";
+    return "asha-warm";
+  });
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("soulsync_voice_uri") || "";
+    }
+    return "";
+  });
+
+  const selectedPersonaRef = useRef(selectedPersonaId);
+  const selectedVoiceURIRef = useRef(selectedVoiceURI);
+
+  useEffect(() => {
+    selectedPersonaRef.current = selectedPersonaId;
+  }, [selectedPersonaId]);
+
+  useEffect(() => {
+    selectedVoiceURIRef.current = selectedVoiceURI;
+  }, [selectedVoiceURI]);
 
   const { user } = useStore();
   const userName = user?.name || "Student";
@@ -205,10 +341,45 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
   // Ensure voices are loaded (Chrome loads them lazily)
   useEffect(() => {
     if (!hasSpeech) return;
-    const load = () => { getVoices(); };
+    const load = () => {
+      const v = getVoices();
+      if (v && v.length > 0) setAvailableVoices(v);
+    };
     load();
     window.speechSynthesis.addEventListener("voiceschanged", load);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
+
+  const changePersona = useCallback((personaId: string) => {
+    const found = VOICE_PERSONAS.find(p => p.id === personaId);
+    if (!found) return;
+    setSelectedPersonaId(personaId);
+    selectedPersonaRef.current = personaId;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("soulsync_voice_persona", personaId);
+    }
+  }, []);
+
+  const changeCustomVoice = useCallback((uri: string) => {
+    setSelectedVoiceURI(uri);
+    selectedVoiceURIRef.current = uri;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("soulsync_voice_uri", uri);
+    }
+  }, []);
+
+  const previewVoice = useCallback((personaId?: string, customURI?: string) => {
+    if (!hasSpeech) return;
+    const targetPersonaId = personaId || selectedPersonaRef.current;
+    const targetVoiceURI = customURI !== undefined ? customURI : selectedVoiceURIRef.current;
+    const persona = VOICE_PERSONAS.find(p => p.id === targetPersonaId) || VOICE_PERSONAS[0];
+
+    try {
+      window.speechSynthesis.cancel();
+    } catch (_) {}
+
+    const sampleText = `Hey! Main ${persona.name} hoon. Kaisi lag rahi hai meri aawaaz?`;
+    ttsSpeak(sampleText, () => {}, persona, targetVoiceURI);
   }, []);
 
   // ── Get AI reply ────────────────────────────────────────────────────────────
@@ -300,6 +471,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
     setCallState("speaking");
     setAshaText(reply);
 
+    const currentPersona = VOICE_PERSONAS.find(p => p.id === selectedPersonaRef.current) || VOICE_PERSONAS[0];
     ttsSpeak(reply, () => {
       speakingRef.current = false;
       isProcessingRef.current = false;
@@ -319,7 +491,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
           setCallState("listening");
         }
       }
-    });
+    }, currentPersona, selectedVoiceURIRef.current);
   }, [killRec, getAIReply]);
 
   // ── Start listening — Hands-Free Continuous Loop with Silence Detection ─────
@@ -508,6 +680,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
     setAshaText(greeting);
     historyRef.current.push({ role: "assistant", content: greeting });
 
+    const currentPersona = VOICE_PERSONAS.find(p => p.id === selectedPersonaRef.current) || VOICE_PERSONAS[0];
     ttsSpeak(greeting, () => {
       speakingRef.current = false;
       if (activeRef.current && !isMutedRef.current) {
@@ -519,7 +692,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
           }
         }, 350);
       }
-    });
+    }, currentPersona, selectedVoiceURIRef.current);
   }, [companionName, userName, startListening]);
 
   // ── stopCall ────────────────────────────────────────────────────────────────
@@ -547,6 +720,9 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string, defa
   return {
     callState, transcript, ashaText, error,
     isMuted, isUserSpeaking, speechLang,
+    selectedPersonaId, selectedVoiceURI,
+    changePersona, changeCustomVoice, previewVoice,
+    availableVoices,
     startCall, stopCall, sendText, clearError,
     toggleMute, setLanguage, interruptAsha, commitCurrentSpeech,
     startPTT, stopPTT,

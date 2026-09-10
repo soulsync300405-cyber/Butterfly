@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, VolumeX,
-  Camera, Shield, Wifi, WifiOff, Eye, EyeOff, Sparkles, Radio
+  Camera, Shield, Wifi, WifiOff, Eye, EyeOff, Sparkles, Radio,
+  Check, ChevronDown, X, Settings2
 } from "lucide-react";
 import { AnimeAvatar } from "@/components/AnimeAvatar";
 import type { Companion } from "@/lib/store";
-import { useAIVoiceCall } from "@/hooks/useAIVoiceCall";
+import { useAIVoiceCall, VOICE_PERSONAS, type VoicePersona } from "@/hooks/useAIVoiceCall";
 import { useWebRTC } from "@/hooks/useWebRTC";
 
 interface CallUIProps {
@@ -109,10 +110,190 @@ function useDuration(running: boolean) {
   return fmt(secs);
 }
 
+// ── Voice Selector Modal ─────────────────────────────────────────────────────
+interface VoiceSelectorModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  selectedPersonaId: string;
+  selectedVoiceURI: string;
+  onSelectPersona: (id: string) => void;
+  onSelectVoiceURI: (uri: string) => void;
+  onPreview: (id: string, uri?: string) => void;
+  availableVoices: SpeechSynthesisVoice[];
+}
+
+function VoiceSelectorModal({
+  isOpen,
+  onClose,
+  selectedPersonaId,
+  selectedVoiceURI,
+  onSelectPersona,
+  onSelectVoiceURI,
+  onPreview,
+  availableVoices,
+}: VoiceSelectorModalProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-3xl border border-white/15 overflow-hidden shadow-2xl flex flex-col max-h-[88vh]"
+        style={{ background: "rgba(10, 18, 13, 0.96)", backdropFilter: "blur(20px)" }}
+      >
+        {/* Top header */}
+        <div className="px-6 pt-5 pb-4 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-primary">
+              <Volume2 size={18} />
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-base font-serif">Select AI Voice Persona</h3>
+              <p className="text-white/40 text-xs">Choose the tone and accent for real-time conversation</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Personas grid */}
+        <div className="p-5 overflow-y-auto space-y-4 flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {VOICE_PERSONAS.map((p) => {
+              const isSelected = selectedPersonaId === p.id;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => onSelectPersona(p.id)}
+                  className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                    isSelected
+                      ? "border-primary bg-primary/15 shadow-lg shadow-primary/10 ring-1 ring-primary/40"
+                      : "border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/6"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-2xl">{p.emoji}</span>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white text-sm font-bold">{p.name}</span>
+                          {isSelected && (
+                            <span className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-white">
+                              <Check size={10} strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-primary/90 font-medium">{p.accent}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPreview(p.id);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-[10px] font-semibold text-white flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Preview this voice"
+                    >
+                      <Volume2 size={11} /> Test
+                    </button>
+                  </div>
+                  <p className="text-white/50 text-xs leading-relaxed">{p.description}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Advanced: Device System Voices */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs text-white/50 hover:text-white/80 transition-colors bg-white/3 hover:bg-white/6 border border-white/6 cursor-pointer"
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <Settings2 size={13} className="text-primary/70" />
+                Custom System Voices {availableVoices.length > 0 ? `(${availableVoices.length} detected)` : ""}
+              </span>
+              <ChevronDown
+                size={14}
+                className={`transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-2 p-3 rounded-2xl bg-white/4 border border-white/8 space-y-2">
+                <p className="text-[11px] text-white/40">
+                  Override with any specific voice installed on your system or browser:
+                </p>
+                <select
+                  value={selectedVoiceURI}
+                  onChange={(e) => onSelectVoiceURI(e.target.value)}
+                  className="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-primary"
+                >
+                  <option value="">✨ Auto-Match by Persona (Recommended)</option>
+                  {availableVoices.map((v) => (
+                    <option key={v.voiceURI || v.name} value={v.voiceURI || v.name}>
+                      {v.name} ({v.lang}){v.localService ? " [Local]" : " [Online]"}
+                    </option>
+                  ))}
+                </select>
+                {selectedVoiceURI && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectVoiceURI("")}
+                    className="text-[11px] text-primary hover:underline cursor-pointer"
+                  >
+                    Reset to Persona Recommended Voice
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-white/10 bg-black/30 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => onPreview(selectedPersonaId, selectedVoiceURI)}
+            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Volume2 size={13} /> Listen Sample
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-xs font-bold text-white transition-opacity cursor-pointer shadow-md shadow-primary/20"
+          >
+            Apply & Done
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Main CallUI ──────────────────────────────────────────────────────────────
 export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const [phase, setPhase] = useState<"permission" | "starting" | "active">("permission");
   const [voiceTestResult, setVoiceTestResult] = useState<"untested" | "ok" | "fail">("untested");
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
   const local = useLocalStream(type !== "ai-voice");
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -126,7 +307,11 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
   const aiCall = useAIVoiceCall(
     companion?.name || "Asha",
     companion?.voiceStyle,
+    "en-IN",
+    companion?.gender
   );
+
+  const currentPersona = VOICE_PERSONAS.find(p => p.id === aiCall.selectedPersonaId) || VOICE_PERSONAS[0];
 
   const duration = useDuration(phase === "active");
   const _frame = useFrameCapture(local.stream, phase === "active" && type === "ai-video");
@@ -285,22 +470,44 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                   ))}
                 </div>
 
-                {/* Test voice — lets user verify TTS works before starting */}
+                {/* Voice Persona Card on Permission Screen */}
                 {(type === "ai-voice" || type === "ai-video") && (
-                  <div className="flex items-center justify-between px-1">
-                    <button
-                      onClick={handleTestVoice}
-                      className="flex items-center gap-1.5 text-xs text-white/40 hover:text-primary transition-colors bg-transparent border-none cursor-pointer"
-                    >
-                      <Volume2 size={12} />
-                      Test voice
-                    </button>
-                    {voiceTestResult === "ok" && (
-                      <span className="text-[11px] text-emerald-400 font-semibold">✓ Voice working</span>
-                    )}
-                    {voiceTestResult === "fail" && (
-                      <span className="text-[11px] text-red-400">✗ No voice — check system audio</span>
-                    )}
+                  <div
+                    className="rounded-2xl border border-white/10 p-3 flex items-center justify-between gap-2"
+                    style={{ background: "rgba(255,255,255,0.04)" }}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center text-lg shrink-0">
+                        {currentPersona.emoji}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white text-xs font-bold truncate">{currentPersona.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 font-medium whitespace-nowrap">
+                            {currentPersona.accent}
+                          </span>
+                        </div>
+                        <p className="text-white/40 text-[11px] truncate">{currentPersona.description}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => aiCall.previewVoice(currentPersona.id, aiCall.selectedVoiceURI)}
+                        className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-[11px] font-semibold text-white/90 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Preview voice"
+                      >
+                        <Volume2 size={12} /> Test
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowVoiceModal(true)}
+                        className="px-2.5 py-1.5 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-[11px] font-bold text-primary transition-colors cursor-pointer"
+                      >
+                        Change
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -565,16 +772,28 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
                 </div>
 
                 {/* Controls */}
-                <div className="flex flex-col items-center gap-4">
-                  {/* Speech Language Switcher Pill */}
-                  <button
-                    onClick={() => aiCall.setLanguage(aiCall.speechLang === "en-IN" ? "hi-IN" : "en-IN")}
-                    className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white/80 font-medium transition-colors cursor-pointer flex items-center gap-1.5"
-                    title="Toggle speech recognition between Hinglish/English and Hindi"
-                  >
-                    <span>🗣️</span>
-                    <span>Lang: <strong>{aiCall.speechLang === "en-IN" ? "Hinglish / EN" : "Hindi (हिंदी)"}</strong></span>
-                  </button>
+                <div className="flex flex-col items-center gap-3">
+                  {/* Speech Language & Voice Switcher Pills */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => aiCall.setLanguage(aiCall.speechLang === "en-IN" ? "hi-IN" : "en-IN")}
+                      className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white/80 font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                      title="Toggle speech recognition between Hinglish/English and Hindi"
+                    >
+                      <span>🗣️</span>
+                      <span>Lang: <strong>{aiCall.speechLang === "en-IN" ? "Hinglish / EN" : "Hindi"}</strong></span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowVoiceModal(true)}
+                      className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white/80 font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                      title="Change AI voice persona"
+                    >
+                      <span>{currentPersona.emoji}</span>
+                      <span>Voice: <strong>{currentPersona.name}</strong></span>
+                      <ChevronDown size={11} className="text-white/40" />
+                    </button>
+                  </div>
 
                   {/* Primary Controls */}
                   <div className="flex items-center gap-4">
@@ -754,6 +973,17 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <VoiceSelectorModal
+        isOpen={showVoiceModal}
+        onClose={() => setShowVoiceModal(false)}
+        selectedPersonaId={aiCall.selectedPersonaId}
+        selectedVoiceURI={aiCall.selectedVoiceURI}
+        onSelectPersona={aiCall.changePersona}
+        onSelectVoiceURI={aiCall.changeCustomVoice}
+        onPreview={aiCall.previewVoice}
+        availableVoices={aiCall.availableVoices}
+      />
     </motion.div>
   );
 }

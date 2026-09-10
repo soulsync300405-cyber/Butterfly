@@ -2858,10 +2858,23 @@ function SettingsTab() {
             <option value="hindi">Hindi</option>
           </select>
         </Row>
-        <Row label="Voice Style">
-          <select value={companion?.voiceStyle || "Calm"} onChange={e => companion && setCompanion({ ...companion, voiceStyle: e.target.value })}
-            className="text-sm bg-background border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40">
-            {["Calm", "Energetic", "Warm", "Witty"].map(v => <option key={v}>{v}</option>)}
+        <Row label="AI Call Voice Persona" sub="Voice & tone for live voice and video calls">
+          <select
+            value={typeof window !== "undefined" ? (localStorage.getItem("soulsync_voice_persona") || "asha-warm") : "asha-warm"}
+            onChange={e => {
+              if (typeof window !== "undefined") {
+                localStorage.setItem("soulsync_voice_persona", e.target.value);
+              }
+              if (companion) setCompanion({ ...companion, voiceStyle: e.target.value });
+            }}
+            className="text-sm bg-background border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+          >
+            <option value="asha-warm">🌸 Asha (Warm Indian Female)</option>
+            <option value="ananya-calm">🌿 Ananya (Soft & Soothing)</option>
+            <option value="riya-energetic">⚡ Riya (Cheerful Hinglish)</option>
+            <option value="arjun-male">👔 Arjun (Calm Indian Male)</option>
+            <option value="kabir-deep">🎙️ Kabir (Deep Indian Male)</option>
+            <option value="grace-global">🌐 Grace (Natural Global English)</option>
           </select>
         </Row>
       </Section>
