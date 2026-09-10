@@ -123,7 +123,7 @@ function ttsSpeak(text: string, onEnd: () => void, _useDefault = false): void {
 
   utt.onend = finish;
   utt.onerror = (e) => {
-    if (e.error !== "interrupted" && e.error !== "canceled" && e.error !== "cancelled") {
+    if (e.error !== "interrupted" && e.error !== "canceled") {
       console.warn("[TTS error]", e.error);
     }
     finish();
@@ -231,7 +231,7 @@ export function useAIVoiceCall(companionName: string, _voiceStyle?: string) {
       } catch (e) { console.warn("[Call AI]", e); }
     }
 
-    const reply = await fetchGeminiDirect(msgs);
+    const reply = await fetchGeminiDirect(msgs, null);
     return cleanForTTS(reply);
   }, []);
 

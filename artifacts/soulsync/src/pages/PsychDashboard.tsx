@@ -11,7 +11,6 @@ import { CallUI } from "@/components/CallUI";
 import { LiveCallModal } from "@/components/LiveCallModal";
 import { useStore } from "@/lib/store";
 import type { SharedMessage } from "@/lib/store";
-import { useRegisterSocket } from "@/hooks/useSocket";
 import { usePsychCall } from "@/hooks/usePsychCall";
 import { ref, push, onChildAdded, off } from "firebase/database";
 import { db } from "@/lib/firebase";
