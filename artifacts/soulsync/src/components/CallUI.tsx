@@ -3,11 +3,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Volume2, VolumeX,
   Camera, Shield, Wifi, WifiOff, Eye, EyeOff, Sparkles, Radio,
-  Check, ChevronDown, X, Settings2
+  Check, ChevronDown, X, Settings2, Copy, RefreshCw, SlidersHorizontal
 } from "lucide-react";
 import { AnimeAvatar } from "@/components/AnimeAvatar";
 import type { Companion } from "@/lib/store";
-import { useAIVoiceCall, VOICE_PERSONAS, type VoicePersona } from "@/hooks/useAIVoiceCall";
+import {
+  useAIVoiceCall,
+  VOICE_PERSONAS,
+  type VoicePersona,
+  getMappedVoiceForPersona,
+  isFemaleVoice,
+  isMaleVoice
+} from "@/hooks/useAIVoiceCall";
 import { useWebRTC } from "@/hooks/useWebRTC";
 
 interface CallUIProps {
@@ -132,8 +139,13 @@ interface VoiceSelectorModalProps {
   selectedVoiceURI: string;
   onSelectPersona: (id: string) => void;
   onSelectVoiceURI: (uri: string) => void;
-  onPreview: (id: string, uri?: string) => void;
+  onPreview: (id?: string, uri?: string, pitch?: number, rate?: number) => void;
   availableVoices: SpeechSynthesisVoice[];
+  pitchModifier: number;
+  rateModifier: number;
+  onChangePitch: (p: number) => void;
+  onChangeRate: (r: number) => void;
+  onRefreshVoices: () => void;
 }
 
 function VoiceSelectorModal({
@@ -145,17 +157,39 @@ function VoiceSelectorModal({
   onSelectVoiceURI,
   onPreview,
   availableVoices,
+  pitchModifier,
+  rateModifier,
+  onChangePitch,
+  onChangeRate,
+  onRefreshVoices,
 }: VoiceSelectorModalProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [refreshedNotice, setRefreshedNotice] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleCopyLink = () => {
+    if (typeof window !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2500);
+    }
+  };
+
+  const handleRefresh = () => {
+    onRefreshVoices();
+    setRefreshedNotice(true);
+    setTimeout(() => setRefreshedNotice(false), 2000);
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
       onClick={onClose}
     >
       <motion.div
@@ -163,8 +197,8 @@ function VoiceSelectorModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-3xl border border-white/15 overflow-hidden shadow-2xl flex flex-col max-h-[88vh]"
-        style={{ background: "rgba(10, 18, 13, 0.96)", backdropFilter: "blur(20px)" }}
+        className="w-full max-w-lg rounded-3xl border border-white/15 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: "rgba(10, 18, 13, 0.97)", backdropFilter: "blur(20px)" }}
       >
         {/* Top header */}
         <div className="px-6 pt-5 pb-4 border-b border-white/10 flex items-center justify-between">
@@ -174,7 +208,7 @@ function VoiceSelectorModal({
             </div>
             <div>
               <h3 className="text-white font-bold text-base font-serif">Select AI Voice Persona</h3>
-              <p className="text-white/40 text-xs">Choose the tone and accent for real-time conversation</p>
+              <p className="text-white/40 text-xs">Choose the tone, accent, and pitch for real-time conversation</p>
             </div>
           </div>
           <button
@@ -185,11 +219,18 @@ function VoiceSelectorModal({
           </button>
         </div>
 
-        {/* Personas grid */}
+        {/* Modal body */}
         <div className="p-5 overflow-y-auto space-y-4 flex-1">
+          {/* Personas grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {VOICE_PERSONAS.map((p) => {
-              const isSelected = selectedPersonaId === p.id;
+              const isSelected = selectedPersonaId === p.id && !selectedVoiceURI;
+              const mappedVoice = getMappedVoiceForPersona(p, availableVoices);
+              const mappedName = mappedVoice
+                ? mappedVoice.name.replace(/Microsoft\s*|\s*-\s*English.*|\s*-\s*Hindi.*/gi, "").trim()
+                : "System Default";
+              const isFem = p.gender === "female";
+
               return (
                 <div
                   key={p.id}
@@ -219,7 +260,7 @@ function VoiceSelectorModal({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onPreview(p.id);
+                        onPreview(p.id, undefined, pitchModifier, rateModifier);
                       }}
                       className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-[10px] font-semibold text-white flex items-center gap-1 transition-colors cursor-pointer"
                       title="Preview this voice"
@@ -227,13 +268,79 @@ function VoiceSelectorModal({
                       <Volume2 size={11} /> Test
                     </button>
                   </div>
+
                   <p className="text-white/50 text-xs leading-relaxed">{p.description}</p>
+
+                  <div className="pt-1 flex items-center justify-between text-[10px]">
+                    <span className="text-white/30 flex items-center gap-1">
+                      {isFem ? "👩 Female" : "👨 Male"}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/60 font-mono">
+                      🔊 {mappedName}
+                    </span>
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          {/* Advanced: Device System Voices */}
+          {/* 🌟 Guide: How to Get 50+ More Voices */}
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <Sparkles size={14} /> How to Add 50+ Real Indian & Natural Voices
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowGuide(!showGuide)}
+                className="text-[11px] text-emerald-300/80 hover:text-emerald-300 underline cursor-pointer"
+              >
+                {showGuide ? "Hide tips" : "See 2 simple ways"}
+              </button>
+            </div>
+
+            {showGuide && (
+              <div className="space-y-2.5 text-xs text-white/70 pt-1">
+                {/* Edge Instant Voices */}
+                <div className="p-3 rounded-xl bg-black/40 border border-emerald-500/20 space-y-1.5">
+                  <div className="font-semibold text-white flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-emerald-300">⚡ Instant: Open SoulSync in Microsoft Edge</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-[10px] font-bold text-white flex items-center gap-1 cursor-pointer transition-colors shadow"
+                    >
+                      <Copy size={11} /> {copiedUrl ? "Copied! Paste in Edge" : "Copy App Link"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-white/50 leading-relaxed">
+                    Edge automatically includes <strong>50+ free online natural neural voices</strong> (Neerja Hindi, Swara, Prabhat, Jenny, etc.) without downloading anything! Just paste the link in Edge.
+                  </p>
+                </div>
+
+                {/* Windows Settings Method */}
+                <div className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-1.5">
+                  <div className="font-semibold text-white">💻 Install Free Indian Voices in Windows (1 min)</div>
+                  <ol className="text-[11px] text-white/50 space-y-1 list-decimal list-inside leading-relaxed">
+                    <li>Open Windows Settings (<kbd className="px-1 py-0.5 rounded bg-white/10 font-mono text-[10px]">Win + I</kbd>) ➔ <strong>Time & Language</strong> ➔ <strong>Speech</strong>.</li>
+                    <li>Under <em>Manage voices</em>, click <strong>Add voices</strong>.</li>
+                    <li>Search <strong>"Hindi"</strong> (adds <em>Microsoft Kalpana</em>) or <strong>"English (India)"</strong> (adds <em>Microsoft Heera</em>).</li>
+                    <li>Click <strong>Add</strong>, then click the button below:</li>
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    className="mt-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-[11px] font-semibold text-white flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <RefreshCw size={12} className={refreshedNotice ? "animate-spin text-emerald-400" : ""} />
+                    {refreshedNotice ? "Refreshed! Checking voices..." : "🔄 Refresh Voice List Now"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Advanced: Device System Voices & Sliders */}
           <div className="pt-1">
             <button
               type="button"
@@ -242,7 +349,7 @@ function VoiceSelectorModal({
             >
               <span className="flex items-center gap-2 font-medium">
                 <Settings2 size={13} className="text-primary/70" />
-                Custom System Voices {availableVoices.length > 0 ? `(${availableVoices.length} detected)` : ""}
+                Custom System Voice & Pitch/Speed Controls {availableVoices.length > 0 ? `(${availableVoices.length} detected)` : ""}
               </span>
               <ChevronDown
                 size={14}
@@ -251,31 +358,109 @@ function VoiceSelectorModal({
             </button>
 
             {showAdvanced && (
-              <div className="mt-2 p-3 rounded-2xl bg-white/4 border border-white/8 space-y-2">
-                <p className="text-[11px] text-white/40">
-                  Override with any specific voice installed on your system or browser:
-                </p>
-                <select
-                  value={selectedVoiceURI}
-                  onChange={(e) => onSelectVoiceURI(e.target.value)}
-                  className="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-primary"
-                >
-                  <option value="">✨ Auto-Match by Persona (Recommended)</option>
-                  {availableVoices.map((v) => (
-                    <option key={v.voiceURI || v.name} value={v.voiceURI || v.name}>
-                      {v.name} ({v.lang}){v.localService ? " [Local]" : " [Online]"}
-                    </option>
-                  ))}
-                </select>
-                {selectedVoiceURI && (
-                  <button
-                    type="button"
-                    onClick={() => onSelectVoiceURI("")}
-                    className="text-[11px] text-primary hover:underline cursor-pointer"
-                  >
-                    Reset to Persona Recommended Voice
-                  </button>
-                )}
+              <div className="mt-2 p-3.5 rounded-2xl bg-white/4 border border-white/8 space-y-3.5">
+                {/* Dropdown selector */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] text-white/50 font-medium block">
+                    Choose specific voice from your device:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedVoiceURI}
+                      onChange={(e) => onSelectVoiceURI(e.target.value)}
+                      className="flex-1 bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-primary"
+                    >
+                      <option value="">✨ Auto-Match by Persona (Recommended)</option>
+                      {availableVoices.map((v) => {
+                        const isFem = isFemaleVoice(v);
+                        const isMal = isMaleVoice(v);
+                        const icon = isFem ? "👩" : isMal ? "👨" : "🎙️";
+                        return (
+                          <option key={v.voiceURI || v.name} value={v.voiceURI || v.name}>
+                            {icon} {v.name} ({v.lang}){v.localService ? " [Local]" : " [Online]"}
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetVoice = selectedVoiceURI || availableVoices[0]?.name;
+                        onPreview(undefined, targetVoice, pitchModifier, rateModifier);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs text-white font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Test the currently selected voice"
+                    >
+                      <Volume2 size={12} /> Test
+                    </button>
+                  </div>
+                  {selectedVoiceURI && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectVoiceURI("")}
+                      className="text-[11px] text-primary hover:underline cursor-pointer pt-0.5 inline-block"
+                    >
+                      Reset to Auto-Match Persona
+                    </button>
+                  )}
+                </div>
+
+                {/* Pitch and Speed Tuning Sliders */}
+                <div className="pt-2 border-t border-white/10 space-y-3">
+                  <div className="flex items-center justify-between text-xs text-white/60">
+                    <span className="font-semibold flex items-center gap-1.5 text-white/80">
+                      <SlidersHorizontal size={12} className="text-primary" />
+                      Tone & Pitch Customizer
+                    </span>
+                    {(pitchModifier !== 1.0 || rateModifier !== 1.0) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChangePitch(1.0);
+                          onChangeRate(1.0);
+                        }}
+                        className="text-[10px] text-primary hover:underline cursor-pointer"
+                      >
+                        Reset Sliders
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Pitch slider */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] text-white/40">
+                      <span>Pitch: {pitchModifier < 1 ? "Deeper" : pitchModifier > 1 ? "Higher" : "Natural"}</span>
+                      <span className="font-mono">{pitchModifier.toFixed(2)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.70"
+                      max="1.35"
+                      step="0.05"
+                      value={pitchModifier}
+                      onChange={(e) => onChangePitch(parseFloat(e.target.value))}
+                      className="w-full accent-primary h-1.5 rounded-lg cursor-pointer bg-white/10"
+                    />
+                  </div>
+
+                  {/* Rate / Speed slider */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px] text-white/40">
+                      <span>Speaking Speed: {rateModifier < 1 ? "Slower" : rateModifier > 1 ? "Faster" : "Normal"}</span>
+                      <span className="font-mono">{rateModifier.toFixed(2)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.75"
+                      max="1.30"
+                      step="0.05"
+                      value={rateModifier}
+                      onChange={(e) => onChangeRate(parseFloat(e.target.value))}
+                      className="w-full accent-primary h-1.5 rounded-lg cursor-pointer bg-white/10"
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -285,7 +470,7 @@ function VoiceSelectorModal({
         <div className="px-6 py-4 border-t border-white/10 bg-black/30 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => onPreview(selectedPersonaId, selectedVoiceURI)}
+            onClick={() => onPreview(selectedPersonaId, selectedVoiceURI, pitchModifier, rateModifier)}
             className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Volume2 size={13} /> Listen Sample
@@ -1037,6 +1222,11 @@ export function CallUI({ type, companion, psychName, onEnd }: CallUIProps) {
         onSelectVoiceURI={aiCall.changeCustomVoice}
         onPreview={aiCall.previewVoice}
         availableVoices={aiCall.availableVoices}
+        pitchModifier={aiCall.pitchModifier}
+        rateModifier={aiCall.rateModifier}
+        onChangePitch={aiCall.changePitch}
+        onChangeRate={aiCall.changeRate}
+        onRefreshVoices={aiCall.refreshVoices}
       />
     </motion.div>
   );
