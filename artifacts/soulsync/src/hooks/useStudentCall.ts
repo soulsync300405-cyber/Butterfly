@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ref, set, onValue, off, push, onChildAdded, remove, get } from "firebase/database";
+import Peer, { type DataConnection, type MediaConnection } from "peerjs";
+import { ref, set, push } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useClientId } from "@/hooks/useDbSync";
 
@@ -20,16 +21,41 @@ export interface LiveMsg {
   sender: string;
 }
 
-const ICE = [
+const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
 ];
 
 async function getStream(): Promise<MediaStream | null> {
   try {
     return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   } catch {
-    try { return await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { return null; }
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      // Fallback synthetic stream so call connects even if camera/mic permissions denied
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#16231a";
+          ctx.fillRect(0, 0, 640, 480);
+          ctx.fillStyle = "#3A7A52";
+          ctx.font = "bold 24px sans-serif";
+          ctx.fillText("Student Call (Audio Only)", 160, 240);
+        }
+        const stream = canvas.captureStream(15);
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const dest = audioCtx.createMediaStreamDestination();
+        dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+        return stream;
+      } catch {
+        return null;
+      }
+    }
   }
 }
 
@@ -42,93 +68,112 @@ export function useStudentCall(userName: string) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
-  const pcRef          = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteRef      = useRef<MediaStream>(new MediaStream());
-  const statusRefState = useRef<StudentCallStatus>("idle");
+  const peerRef         = useRef<Peer | null>(null);
+  const connRef         = useRef<DataConnection | null>(null);
+  const mediaCallRef    = useRef<MediaConnection | null>(null);
+  const localStreamRef  = useRef<MediaStream | null>(null);
+  const statusRefState  = useRef<StudentCallStatus>("idle");
+  const ringTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     statusRefState.current = status;
   }, [status]);
 
-  const clientId = useClientId() || "user_" + Math.random().toString(36).substring(7);
+  const rawClientId = useClientId() || "student_" + Math.random().toString(36).substring(7);
+  const cleanClientId = rawClientId.replace(/[^a-zA-Z0-9_-]/g, "");
 
-  const setupPC = useCallback((stream: MediaStream | null, rid: string) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE });
-    pcRef.current = pc;
-
-    stream?.getTracks().forEach(t => pc.addTrack(t, stream));
-
-    pc.ontrack = (e) => {
-      e.streams[0]?.getTracks().forEach(t => remoteRef.current.addTrack(t));
-      setRemoteStream(new MediaStream(remoteRef.current.getTracks()));
-    };
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        const iceData = e.candidate.toJSON();
-        push(ref(db, `calls/${rid}/iceCandidates/user`), iceData).catch(() => {});
-        fetch("/api/sync/calls", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "ice-user", roomId: rid, candidate: iceData }),
-        }).catch(() => {});
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") setStatus("active");
-      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-        setStatus("ended");
-        cleanup();
-      }
-    };
-
-    return pc;
-  }, []);
-
+  // Cleanup helper
   const cleanup = useCallback(() => {
-    pcRef.current?.close();
-    pcRef.current = null;
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
+    mediaCallRef.current?.close();
+    mediaCallRef.current = null;
+
+    connRef.current?.close();
+    connRef.current = null;
+
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
-    remoteRef.current = new MediaStream();
+
     setLocalStream(null);
     setRemoteStream(null);
     setMessages([]);
     setRoomId("");
-    setPeerName("");
-    setPeerId("");
   }, []);
 
-  // Connect WebRTC with real human psychologist who accepted
-  const startLiveWebRTC = useCallback(async (rid: string) => {
-    setStatus("connecting");
+  // Initialize student's Peer instance
+  useEffect(() => {
+    const studentPeerId = `soulsync-student-${cleanClientId}`;
+    const peer = new Peer(studentPeerId, {
+      config: { iceServers: ICE_SERVERS },
+      debug: 1,
+    });
 
-    const stream = await getStream();
-    localStreamRef.current = stream;
-    setLocalStream(stream);
+    peerRef.current = peer;
 
-    const pc = setupPC(stream, rid);
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+    peer.on("open", (id) => {
+      setPeerId(id);
+    });
 
-      const offerData = { type: offer.type, sdp: offer.sdp };
-      fetch("/api/sync/calls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "offer", roomId: rid, sdp: offerData }),
-      }).catch(() => {});
+    peer.on("connection", (conn) => {
+      conn.on("data", (data: any) => {
+        if (data && data.type === "direct-message") {
+          window.dispatchEvent(new CustomEvent("soulsync:incoming-dm", { detail: data }));
+        }
+      });
+    });
 
-      set(ref(db, `calls/${rid}/offer`), offerData).catch(() => {});
-    } catch (err) {
-      console.warn("[WebRTC] Offer error:", err);
-    }
-  }, [setupPC]);
+    peer.on("call", async (incomingMediaCall) => {
+      // Psychologist called us with media after accepting
+      let stream = localStreamRef.current;
+      if (!stream) {
+        stream = await getStream();
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+      }
 
+      incomingMediaCall.answer(stream || new MediaStream());
+      mediaCallRef.current = incomingMediaCall;
+
+      incomingMediaCall.on("stream", (remote) => {
+        setRemoteStream(remote);
+        setStatus("active");
+      });
+
+      incomingMediaCall.on("close", () => {
+        setStatus("ended");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 2000);
+      });
+
+      incomingMediaCall.on("error", () => {
+        setStatus("ended");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 2000);
+      });
+    });
+
+    peer.on("error", (err: any) => {
+      console.warn("[PeerJS Student Error]:", err.type, err.message);
+      if (err.type === "peer-unavailable") {
+        setStatus("no-psych");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 4000);
+      }
+    });
+
+    return () => {
+      cleanup();
+      peer.destroy();
+      peerRef.current = null;
+    };
+  }, [cleanClientId, cleanup]);
+
+  // Dial a psychologist
   const dial = useCallback(async (psychName?: string) => {
-    if (status !== "idle") return;
+    if (statusRefState.current !== "idle") return;
     setStatus("ringing");
 
     const newRoomId = `room_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -136,95 +181,88 @@ export function useStudentCall(userName: string) {
     const chosenPsych = psychName || "Dr. Priya Iyer";
     setPeerName(chosenPsych);
 
-    const ringPayload = {
-      type: "ringing",
-      roomId: newRoomId,
-      userName: userName || "Student",
-      psychName: chosenPsych,
-    };
+    // Target the primary psychologist portal (Dr. Priya Iyer)
+    const targetPeerId = "soulsync-psych-priya";
 
-    // 1. Dev server sync API
-    fetch("/api/sync/calls", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(ringPayload),
-    }).catch(() => {});
+    // Prepare local media stream early
+    const stream = await getStream();
+    localStreamRef.current = stream;
+    setLocalStream(stream);
 
-    // 2. BroadcastChannel
+    const peer = peerRef.current;
+    if (peer) {
+      // Establish DataConnection for signaling & in-call chat
+      const conn = peer.connect(targetPeerId, { reliable: true });
+      connRef.current = conn;
+
+      conn.on("open", () => {
+        conn.send({
+          type: "incoming-call",
+          roomId: newRoomId,
+          studentPeerId: peer.id,
+          userName: userName || "Student",
+          psychName: chosenPsych,
+        });
+      });
+
+      conn.on("data", (data: any) => {
+        if (!data || typeof data !== "object") return;
+
+        if (data.type === "call-accepted") {
+          if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+          setStatus("connecting");
+        } else if (data.type === "call-declined") {
+          if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+          setStatus("declined");
+          cleanup();
+          setTimeout(() => setStatus("idle"), 3500);
+        } else if (data.type === "call-ended") {
+          setStatus("ended");
+          cleanup();
+          setTimeout(() => setStatus("idle"), 2000);
+        } else if (data.type === "chat-message") {
+          if (data.message) {
+            setMessages(prev => [...prev, data.message]);
+          }
+        }
+      });
+
+      conn.on("error", () => {
+        setStatus("no-psych");
+        cleanup();
+        setTimeout(() => setStatus("idle"), 4000);
+      });
+    }
+
+    // Secondary BroadcastChannel fallback for multi-tab testing
     try {
       const bc = new BroadcastChannel("soulsync_calls");
-      bc.postMessage(ringPayload);
+      bc.postMessage({
+        type: "ringing",
+        roomId: newRoomId,
+        userName: userName || "Student",
+        psychName: chosenPsych,
+      });
       bc.close();
     } catch (_) {}
 
-    // 3. Firebase
-    set(ref(db, `calls/${newRoomId}`), {
-      status: "ringing",
-      userName: userName,
-      offer: { from: clientId }
+    // Dev server sync fallback
+    fetch("/api/sync/calls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "ringing", roomId: newRoomId, userName, psychName: chosenPsych }),
     }).catch(() => {});
 
-  }, [status, userName, clientId]);
+    // Firebase fallback
+    set(ref(db, `calls/${newRoomId}`), {
+      status: "ringing",
+      userName,
+      psychName: chosenPsych,
+      timestamp: Date.now(),
+    }).catch(() => {});
 
-  // Polling & sync listener for call events
-  useEffect(() => {
-    if (!roomId) return;
-
-    // 1. Firebase status listener
-    const statusRef = ref(db, `calls/${roomId}/status`);
-    onValue(statusRef, (snap) => {
-      const val = snap.val();
-      if (val === "active" && statusRefState.current === "ringing") {
-        startLiveWebRTC(roomId);
-      } else if (val === "declined") {
-        setStatus("declined");
-        cleanup();
-        setTimeout(() => setStatus("idle"), 3500);
-      } else if (val === "ended") {
-        setStatus("ended");
-        cleanup();
-        setTimeout(() => setStatus("idle"), 2000);
-      }
-    }, () => {});
-
-    // 2. Dev server sync polling
-    let lastSync = Date.now() - 3000;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/sync/calls?since=${lastSync}`);
-        if (res.ok) {
-          const events = await res.json();
-          if (Array.isArray(events)) {
-            lastSync = Date.now();
-            for (const ev of events) {
-              if (ev.roomId === roomId) {
-                if (ev.type === "accepted" && statusRefState.current === "ringing") {
-                  startLiveWebRTC(roomId);
-                } else if (ev.type === "answer" && pcRef.current && pcRef.current.signalingState === "have-local-offer") {
-                  await pcRef.current.setRemoteDescription(new RTCSessionDescription(ev.sdp));
-                  setStatus("active");
-                } else if (ev.type === "ice-candidate" && ev.role === "psych" && pcRef.current) {
-                  pcRef.current.addIceCandidate(new RTCIceCandidate(ev.candidate)).catch(() => {});
-                } else if (ev.type === "declined") {
-                  setStatus("declined");
-                  cleanup();
-                  setTimeout(() => setStatus("idle"), 3500);
-                } else if (ev.type === "ended") {
-                  setStatus("ended");
-                  cleanup();
-                  setTimeout(() => setStatus("idle"), 2000);
-                } else if (ev.type === "chat" && ev.role === "psych") {
-                  setMessages(prev => [...prev, { id: Date.now(), role: "psych", text: ev.text, time: ev.time || "now", sender: ev.sender || "Dr. Priya Iyer" }]);
-                }
-              }
-            }
-          }
-        }
-      } catch (_) {}
-    }, 600);
-
-    // Timeout if no psychologist answers in 35 seconds
-    const timeoutTimer = setTimeout(() => {
+    // Ringing timeout (35 seconds)
+    ringTimeoutRef.current = setTimeout(() => {
       if (statusRefState.current === "ringing") {
         setStatus("no-psych");
         cleanup();
@@ -232,81 +270,91 @@ export function useStudentCall(userName: string) {
       }
     }, 35000);
 
-    // 3. BroadcastChannel listener
+  }, [userName, cleanup]);
+
+  // End Call
+  const endCall = useCallback(() => {
+    if (connRef.current?.open) {
+      connRef.current.send({ type: "call-ended" });
+    }
+
     try {
       const bc = new BroadcastChannel("soulsync_calls");
-      bc.onmessage = (event) => {
-        const ev = event.data;
-        if (ev && ev.roomId === roomId) {
-          if (ev.type === "accepted" && statusRefState.current === "ringing") {
-            startLiveWebRTC(roomId);
-          } else if (ev.type === "declined") {
-            setStatus("declined");
-            cleanup();
-            setTimeout(() => setStatus("idle"), 3500);
-          } else if (ev.type === "ended") {
-            setStatus("ended");
-            cleanup();
-            setTimeout(() => setStatus("idle"), 2000);
-          }
-        }
-      };
-      return () => {
-        clearTimeout(timeoutTimer);
-        clearInterval(interval);
-        off(statusRef);
-        bc.close();
-      };
-    } catch (_) {
-      return () => {
-        clearTimeout(timeoutTimer);
-        clearInterval(interval);
-        off(statusRef);
-      };
-    }
-  }, [roomId, peerName, startLiveWebRTC, cleanup]);
+      bc.postMessage({ type: "ended", roomId });
+      bc.close();
+    } catch (_) {}
 
-  const endCall = useCallback(() => {
+    fetch("/api/sync/calls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "ended", roomId }),
+    }).catch(() => {});
+
     if (roomId) {
       set(ref(db, `calls/${roomId}/status`), "ended").catch(() => {});
-      fetch("/api/sync/calls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "ended", roomId }),
-      }).catch(() => {});
-      try {
-        const bc = new BroadcastChannel("soulsync_calls");
-        bc.postMessage({ type: "ended", roomId });
-        bc.close();
-      } catch (_) {}
     }
+
     cleanup();
     setStatus("ended");
     setTimeout(() => setStatus("idle"), 2000);
   }, [roomId, cleanup]);
 
+  // Send in-call chat message
   const sendMessage = useCallback((text: string) => {
-    if (!roomId || !text.trim()) return;
-    const msg = { role: "user" as const, text: text.trim(), sender: userName, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), id: Date.now() };
-    setMessages(p => [...p, msg]);
+    if (!text.trim()) return;
+    const msg: LiveMsg = {
+      id: Date.now(),
+      role: "user",
+      text: text.trim(),
+      sender: userName || "Student",
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
 
-    const chatRef = ref(db, `calls/${roomId}/chat`);
-    push(chatRef, msg).catch(() => {});
+    setMessages(prev => [...prev, msg]);
 
-    fetch("/api/sync/calls", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "chat", roomId, ...msg }),
-    }).catch(() => {});
-  }, [roomId, userName]);
+    if (connRef.current?.open) {
+      connRef.current.send({ type: "chat-message", message: msg });
+    }
 
-  useEffect(() => {
-    return () => cleanup();
-  }, [cleanup]);
+    if (roomId) {
+      push(ref(db, `calls/${roomId}/chat`), msg).catch(() => {});
+    }
+  }, [userName, roomId]);
+
+  // Send direct message outside of call
+  const sendDirectMessage = useCallback((text: string, toPsychName?: string) => {
+    if (!text.trim()) return;
+    const targetPeerId = "soulsync-psych-priya";
+    const peer = peerRef.current;
+    if (peer && !peer.destroyed) {
+      const conn = peer.connect(targetPeerId, { reliable: true });
+      conn.on("open", () => {
+        conn.send({
+          type: "direct-message",
+          fromName: userName || "Student",
+          fromRole: "user",
+          fromPeerId: peer.id,
+          toName: toPsychName || "Dr. Priya Iyer",
+          text: text.trim(),
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        });
+        setTimeout(() => conn.close(), 1500);
+      });
+    }
+  }, [userName]);
 
   return {
-    status, roomId, peerName, peerId,
-    messages, localStream, remoteStream,
-    dial, endCall, sendMessage,
+    status,
+    roomId,
+    peerName,
+    peerId,
+    messages,
+    localStream,
+    remoteStream,
+    dial,
+    endCall,
+    sendMessage,
+    sendDirectMessage,
   };
 }
+

@@ -2303,6 +2303,8 @@ function PsychTab() {
       time
     };
 
+    call.sendDirectMessage(text, psychName);
+
     push(ref(db, 'dms'), dmPayload).catch(err => console.warn("Firebase DM sync error:", err));
 
     fetch("/api/sync/dms", {
@@ -2319,6 +2321,22 @@ function PsychTab() {
   };
 
   useEffect(() => {
+    const handleIncomingDm = (e: any) => {
+      const dm = e.detail;
+      if (dm && dm.fromRole === "psych") {
+        const psych = PSYCHOLOGISTS.find(p => p.name === dm.fromName) || PSYCHOLOGISTS[0];
+        if (psych) {
+          addPsychMessage(psych.id, {
+            id: dm.id || Date.now(),
+            role: "psych",
+            text: dm.text,
+            time: dm.time || getTime(),
+          });
+        }
+      }
+    };
+    window.addEventListener("soulsync:incoming-dm", handleIncomingDm);
+
     const dmsRef = ref(db, `dms`);
     const unsubscribe = onChildAdded(dmsRef, (snapshot) => {
       const dm = snapshot.val();
@@ -2380,17 +2398,20 @@ function PsychTab() {
         }
       };
       return () => {
+        window.removeEventListener("soulsync:incoming-dm", handleIncomingDm);
         clearInterval(interval);
         off(ref(db, 'dms'), 'child_added', unsubscribe);
         bc.close();
       };
     } catch (_) {
       return () => {
+        window.removeEventListener("soulsync:incoming-dm", handleIncomingDm);
         clearInterval(interval);
         off(ref(db, 'dms'), 'child_added', unsubscribe);
       };
     }
   }, [addPsychMessage]);
+
 
   const handleBook = (slot: string, notes: string, sessionType: "video" | "audio" | "chat") => {
     if (!bookPsych) return;

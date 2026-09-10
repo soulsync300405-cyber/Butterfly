@@ -94,7 +94,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
             exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.15 }}
             className={tab === "messages" ? "h-full" : "min-h-full"}>
             {tab === "triage"        && <TriageTab selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} />}
-            {tab === "messages"      && <MessagesTab />}
+            {tab === "messages"      && <MessagesTab psychCall={psychCall} />}
             {tab === "analytics"     && <AnalyticsTab />}
             {tab === "reports"       && <ReportsTab />}
             {tab === "notifications" && <NotificationsTab notifications={notifications} setNotifications={setNotifications} />}
@@ -173,7 +173,7 @@ export function PsychDashboard({ licenseId, onLogout }: { licenseId: string; onL
 type LiveDM = { id: number; fromName: string; fromRole: "user" | "psych"; text: string; time: string };
 
 // ─── MESSAGES TAB ─────────────────────────────────────────────────────────────
-function MessagesTab() {
+function MessagesTab({ psychCall }: { psychCall: ReturnType<typeof usePsychCall> }) {
   const { psychMessages, addPsychMessage, markPsychRead, psychLastRead } = useStore();
   const [activePsychId, setActivePsychId] = useState<number | null>(null);
   const [activeStudentName, setActiveStudentName] = useState<string | null>(null);
@@ -228,6 +228,24 @@ function MessagesTab() {
     }, 1000);
 
     // Multi-tab BroadcastChannel listener for receiving DMs from Student
+    const handlePeerDm = (e: any) => {
+      const dm = e.detail;
+      if (dm && dm.fromRole !== "psych") {
+        const studentName = dm.fromName || "Student";
+        setLiveDMs(prev => ({
+          ...prev,
+          [studentName]: [...(prev[studentName] || []), {
+            id: dm.id || Date.now(),
+            fromName: studentName,
+            fromRole: "user",
+            text: dm.text,
+            time: dm.time || getTime(),
+          }],
+        }));
+      }
+    };
+    window.addEventListener("soulsync:incoming-dm", handlePeerDm);
+
     try {
       const bc = new BroadcastChannel("soulsync_dms");
       bc.onmessage = (event) => {
@@ -241,17 +259,20 @@ function MessagesTab() {
         }
       };
       return () => {
+        window.removeEventListener("soulsync:incoming-dm", handlePeerDm);
         clearInterval(interval);
         off(ref(db, 'dms'), 'child_added', unsubscribe);
         bc.close();
       };
     } catch (_) {
       return () => {
+        window.removeEventListener("soulsync:incoming-dm", handlePeerDm);
         clearInterval(interval);
         off(ref(db, 'dms'), 'child_added', unsubscribe);
       };
     }
   }, []);
+
 
   const openConversation = (psychId: number, studentName?: string) => {
     setActivePsychId(psychId);
@@ -272,6 +293,8 @@ function MessagesTab() {
         ...prev,
         [activeStudentName]: [...(prev[activeStudentName] || []), myMsg],
       }));
+
+      psychCall.sendDirectMessage(text, activeStudentName);
 
       const payload = {
         toName: activeStudentName,
@@ -301,7 +324,10 @@ function MessagesTab() {
     const patientForPsych = allConversations.find(c => c.psychId === activePsychId);
     addPsychMessage(activePsychId, { id: Date.now(), role: "psych", text, time: getTime() });
     if (patientForPsych) {
+      psychCall.sendDirectMessage(text, patientForPsych.patient.name);
+
       const payload = {
+
         toName: patientForPsych.patient.name,
         text,
         fromName: "Dr. Priya Iyer",
