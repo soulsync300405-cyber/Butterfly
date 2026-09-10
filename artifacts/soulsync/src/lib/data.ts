@@ -1,22 +1,363 @@
-export const QUESTS = [
-  { id: 1, title: "ADHD Focus Sprint", category: "ADHD", xp: 60, duration: "8m", difficulty: "medium", desc: "A 5-question quiz to sharpen your attention and working memory.", steps: ["Pick ONE task right now", "Set a 2-minute timer", "Work on only that task", "Notice when your mind wanders", "Celebrate finishing"] },
-  { id: 2, title: "OCD Grounding Ritual", category: "OCD", xp: 50, duration: "5m", difficulty: "easy", desc: "The 5-4-3-2-1 sensory grounding exercise to anchor yourself in the present.", steps: ["Name 5 things you see", "Name 4 things you can touch", "Name 3 things you hear", "Name 2 things you smell", "Name 1 thing you taste"] },
-  { id: 3, title: "Anxiety Breath Reset", category: "Breathing", xp: 40, duration: "4m", difficulty: "easy", desc: "A guided breathing exercise synced with Asha to calm your nervous system.", steps: ["Sit comfortably", "Breathe in for 4 counts", "Hold for 7 counts", "Exhale for 8 counts", "Repeat 3 times"] },
-  { id: 4, title: "Focus Flow Challenge", category: "Focus", xp: 80, duration: "12m", difficulty: "hard", desc: "Train sustained attention with a progressive concentration task.", steps: ["Remove all distractions", "Set a 10-minute timer", "Focus on one task only", "Track focus breaks", "Reflect on performance"] },
-  { id: 5, title: "Emotion Naming Journal", category: "Anxiety", xp: 45, duration: "6m", difficulty: "easy", desc: "Name and describe 3 emotions you felt today. Build your EQ vocabulary.", steps: ["Find a quiet moment", "Think about your day", "Name emotion #1", "Name emotion #2", "Name emotion #3"] },
-  { id: 6, title: "Grounding Body Scan", category: "Grounding", xp: 55, duration: "7m", difficulty: "medium", desc: "A mindful body scan to release tension and reconnect with your physical self.", steps: ["Lie or sit comfortably", "Close your eyes", "Start at your feet", "Slowly move upward", "Release tension as you go"] },
-  { id: 7, title: "2-Minute Worry Box", category: "OCD", xp: 35, duration: "2m", difficulty: "easy", desc: "Write down 3 intrusive thoughts, fold them, and put them in your 'worry box'.", steps: ["Get paper and pen", "Write intrusive thought 1", "Write intrusive thought 2", "Write intrusive thought 3", "Fold and set aside"] },
-  { id: 8, title: "Gratitude Snap", category: "Focus", xp: 25, duration: "3m", difficulty: "easy", desc: "Name 3 tiny good things from today. Rewire your brain toward positivity.", steps: ["Take a deep breath", "Think of 1 good thing", "Think of another", "Think of one more", "Feel grateful for each"] },
-  { id: 9, title: "Social Energy Check", category: "Anxiety", xp: 50, duration: "5m", difficulty: "medium", desc: "Practice boundary-setting with a role-play scenario. Protect your energy.", steps: ["Think of a draining situation", "Identify your boundary", "Practice saying no kindly", "Notice how it feels", "Commit to one boundary today"] },
-  { id: 10, title: "Sleep Wind-Down", category: "Grounding", xp: 60, duration: "10m", difficulty: "easy", desc: "A bedtime routine sequence to signal your brain it is safe to rest.", steps: ["Dim your screen", "Write tomorrow's top task", "Do 3 neck rolls each side", "Breathe deeply 5 times", "Set phone face-down"] },
-  { id: 11, title: "Confidence Mirror", category: "Focus", xp: 70, duration: "8m", difficulty: "medium", desc: "A self-affirmation challenge. Look in the mirror and speak kindly to yourself.", steps: ["Find a mirror", "Make eye contact with yourself", "Say: 'I am doing my best'", "Name one strength", "Smile at yourself genuinely"] },
-  { id: 12, title: "Emotion Regulation", category: "ADHD", xp: 45, duration: "6m", difficulty: "medium", desc: "An impulse check exercise. Pause before reacting to build emotional control.", steps: ["Think of a recent trigger", "Notice body sensation", "Count to 10 slowly", "Ask: is this worth reacting?", "Choose a calm response"] },
-  { id: 13, title: "Panic Button Rescue", category: "Breathing", xp: 45, duration: "3m", difficulty: "easy", desc: "A fast-acting somatic calming session for high stress moments.", steps: ["Place hands on stomach", "Exhale fully with a sigh", "Double inhale through nose", "Slow exhale through mouth", "Repeat 4 times"] },
-  { id: 14, title: "Digital Boundaries Challenge", category: "Focus", xp: 90, duration: "30m", difficulty: "hard", desc: "Lock all social media apps and study distraction-free for 30 minutes.", steps: ["Turn off notifications", "Put phone in another room", "Set 30-minute timer", "Work on your highest priority", "Review your focus log"] },
-  { id: 15, title: "Positive Self-Talk Journal", category: "EQ", xp: 50, duration: "5m", difficulty: "easy", desc: "Rewrite 3 negative self-criticisms into constructive coaching thoughts.", steps: ["Write down one self-criticism", "Rephrase it with compassion", "Write down a second one", "Rephrase it", "Repeat for the third"] },
-  { id: 16, title: "5-4-3-2-1 Sensory Reset", category: "Grounding", xp: 40, duration: "4m", difficulty: "easy", desc: "Engage your physical senses to interrupt escalating anxiety spirals.", steps: ["Look around for 5 shapes", "Find 4 textures around you", "Listen for 3 distinct sounds", "Notice 2 physical sensations", "Take 1 slow deep breath"] },
-  { id: 17, title: "ADHD Task Slicing", category: "ADHD", xp: 70, duration: "10m", difficulty: "medium", desc: "Take a huge, overwhelming project and slice it into 5 tiny, stress-free tasks.", steps: ["Write down the big project", "Write down step 1 (under 5 mins)", "Write down step 2", "Write down step 3", "Write down steps 4 and 5"] },
-  { id: 18, title: "Uncertainty Tolerance Block", category: "OCD", xp: 85, duration: "15m", difficulty: "hard", desc: "Sit with a low-level worry or doubt for 15 minutes without checking/seeking reassurance.", steps: ["Identify the doubt/checking trigger", "Set a 15-minute timer", "Commit to zero checking/reassurance", "Observe the anxiety rise and fall", "Note your success"] },
+export interface QuizQuestion {
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  wrongCritique: string;
+}
+
+export interface Quest {
+  id: number;
+  title: string;
+  category: string;
+  xp: number;
+  duration: string;
+  difficulty: "easy" | "medium" | "hard";
+  desc: string;
+  steps: string[];
+  validationType?: "quiz" | "emotion" | "reframe" | "sensory" | "breathing" | "mirror" | "timer" | "mindful";
+  quizQuestions?: QuizQuestion[];
+  promptCues?: string[];
+}
+
+export const QUESTS: Quest[] = [
+  {
+    id: 1,
+    title: "ADHD Focus Sprint",
+    category: "ADHD",
+    xp: 60,
+    duration: "8m",
+    difficulty: "medium",
+    desc: "A 5-question clinical quiz to sharpen your attention, dopamine management, and executive focus.",
+    validationType: "quiz",
+    steps: [
+      "Tactic 1: Task Initiation & Avoidance",
+      "Tactic 2: Reading Attention Lapses",
+      "Tactic 3: Overcoming Task Paralysis",
+      "Tactic 4: Managing Mid-Work Ideas",
+      "Tactic 5: Restless Energy Reset"
+    ],
+    quizQuestions: [
+      {
+        prompt: "You sit down to study, but suddenly feel an intense urge to clean your room or check social media notifications. What is the scientifically proven ADHD executive initiation tactic?",
+        options: [
+          "Clean the entire desk for an hour so you feel productive before studying",
+          "Acknowledge 'this is dopamine avoidance', set a 2-minute timer for the study task, and begin immediately",
+          "Berate yourself for lacking willpower and force yourself to stare at the book for 3 hours without moving"
+        ],
+        correctIndex: 1,
+        explanation: "ADHD task initiation struggles stem from dopamine deficits. Setting a micro-timer (the 2-minute rule) lowers the neurological friction to entry without triggering executive avoidance.",
+        wrongCritique: "Cleaning or self-blaming prolongs executive procrastination and triggers a shame-avoidance cycle."
+      },
+      {
+        prompt: "Your attention drifts while reading a textbook chapter and you realize you read the same paragraph 3 times. What is the most effective cognitive recovery?",
+        options: [
+          "Punish yourself and restart the chapter completely from page 1",
+          "Give up for the day because your brain 'just isn't working today'",
+          "Mark where attention lapsed, summarize the last clear sentence aloud, and use a finger or pen to physically guide your reading gaze"
+        ],
+        correctIndex: 2,
+        explanation: "Pacing your gaze with a physical stylus or finger provides tactile anchoring, which significantly increases visual tracking and working memory retention in ADHD minds.",
+        wrongCritique: "Restarting causes cognitive burnout, and giving up reinforces task abandonment neural pathways."
+      },
+      {
+        prompt: "You have a large semester project due in two weeks and feel completely paralyzed on where to start. What is the optimal 'task slicing' strategy?",
+        options: [
+          "Write down just the single first physical micro-action (e.g. 'Open blank doc and title it') and ignore the rest for now",
+          "Create a massive 50-item checklist that details everything you might ever need to do",
+          "Wait until 24 hours before the deadline so adrenaline and panic force you into hyperfocus"
+        ],
+        correctIndex: 0,
+        explanation: "Working memory overload causes task paralysis. Defining only the immediate next micro-action clears working memory and initiates momentum.",
+        wrongCritique: "50-item lists worsen executive freeze, and relying on panic-induced adrenaline leads to chronic burnout."
+      },
+      {
+        prompt: "While in the middle of deep work, an unrelated brilliant idea or urgent worry pops into your head. How should you handle it?",
+        options: [
+          "Immediately switch tabs to research the new idea before you forget it",
+          "Try to hold the thought in your head while continuing to work",
+          "Write it on a physical 'Distraction Parking Lot' notepad beside you and immediately return to your task"
+        ],
+        correctIndex: 2,
+        explanation: "The 'Distraction Parking Lot' externalizes the thought so your working memory feels safe to let go without fear of forgetting.",
+        wrongCritique: "Context switching ruins your cognitive flow, and holding it in memory consumes 80% of your executive bandwidth."
+      },
+      {
+        prompt: "You planned to work for 45 minutes, but after 18 minutes your mind is restless and fidgety. What is the most effective reset?",
+        options: [
+          "Take a quick 2-minute physical movement break (stretch, drink water, shake out limbs) then resume",
+          "Scroll TikTok or Instagram for 30 minutes to reward yourself",
+          "Force yourself to sit motionless until the 45 minutes are up"
+        ],
+        correctIndex: 0,
+        explanation: "Physical kinesthetic movement stimulates norepinephrine and dopamine, rejuvenating executive focus much better than passive screen scrolling.",
+        wrongCritique: "Social media feeds flood your brain with cheap dopamine spikes, making it nearly impossible to re-enter deep work."
+      }
+    ]
+  },
+  {
+    id: 2,
+    title: "OCD Grounding Ritual",
+    category: "OCD",
+    xp: 50,
+    duration: "5m",
+    difficulty: "easy",
+    desc: "The 5-4-3-2-1 sensory grounding exercise to anchor yourself in the present and calm intrusive loops.",
+    validationType: "sensory",
+    steps: ["Name 5 things you see", "Name 4 things you can touch", "Name 3 things you hear", "Name 2 things you smell", "Name 1 thing you taste"]
+  },
+  {
+    id: 3,
+    title: "Anxiety Breath Reset",
+    category: "Breathing",
+    xp: 40,
+    duration: "4m",
+    difficulty: "easy",
+    desc: "A guided breathing exercise synced with Asha to calm your nervous system.",
+    validationType: "breathing",
+    steps: ["Sit comfortably", "Breathe in for 4 counts", "Hold for 7 counts", "Exhale for 8 counts", "Repeat 3 times"]
+  },
+  {
+    id: 4,
+    title: "Focus Flow Challenge",
+    category: "Focus",
+    xp: 80,
+    duration: "12m",
+    difficulty: "hard",
+    desc: "Train sustained attention with a progressive concentration task.",
+    validationType: "timer",
+    steps: ["Remove all distractions", "Set a 10-minute timer", "Focus on one task only", "Track focus breaks", "Reflect on performance"]
+  },
+  {
+    id: 5,
+    title: "Emotion Naming Journal",
+    category: "Anxiety",
+    xp: 45,
+    duration: "6m",
+    difficulty: "easy",
+    desc: "Name and describe 3 real emotions you felt today. Build your EQ vocabulary.",
+    validationType: "emotion",
+    steps: ["Find a quiet moment", "Think about your day", "Name emotion #1", "Name emotion #2", "Name emotion #3"]
+  },
+  {
+    id: 6,
+    title: "Grounding Body Scan",
+    category: "Grounding",
+    xp: 55,
+    duration: "7m",
+    difficulty: "medium",
+    desc: "A mindful body scan to release tension and reconnect with your physical self.",
+    validationType: "mindful",
+    steps: ["Lie or sit comfortably", "Close your eyes", "Start at your feet", "Slowly move upward", "Release tension as you go"]
+  },
+  {
+    id: 7,
+    title: "2-Minute Worry Box",
+    category: "OCD",
+    xp: 35,
+    duration: "2m",
+    difficulty: "easy",
+    desc: "Write down 3 intrusive thoughts, fold them, and put them in your 'worry box'.",
+    validationType: "sensory",
+    steps: ["Get paper and pen", "Write intrusive thought 1", "Write intrusive thought 2", "Write intrusive thought 3", "Fold and set aside"]
+  },
+  {
+    id: 8,
+    title: "Gratitude Snap",
+    category: "Focus",
+    xp: 25,
+    duration: "3m",
+    difficulty: "easy",
+    desc: "Name 3 tiny good things from today. Rewire your brain toward positivity.",
+    validationType: "reframe",
+    steps: ["Take a deep breath", "Think of 1 good thing", "Think of another", "Think of one more", "Feel grateful for each"],
+    promptCues: ["A warm cup of tea or pleasant morning light", "A message or smile from a friend", "A moment where you made progress or survived a stressful hurdle"]
+  },
+  {
+    id: 9,
+    title: "Social Energy Check",
+    category: "Anxiety",
+    xp: 50,
+    duration: "5m",
+    difficulty: "medium",
+    desc: "Practice boundary-setting with a role-play scenario. Protect your energy.",
+    validationType: "reframe",
+    steps: ["Think of a draining situation", "Identify your boundary", "Practice saying no kindly", "Notice how it feels", "Commit to one boundary today"],
+    promptCues: ["I'd love to help, but my plate is completely full this evening.", "I need some downtime to recharge today, let's catch up this weekend instead."]
+  },
+  {
+    id: 10,
+    title: "Sleep Wind-Down",
+    category: "Grounding",
+    xp: 60,
+    duration: "10m",
+    difficulty: "easy",
+    desc: "A bedtime routine sequence to signal your brain it is safe to rest.",
+    validationType: "mindful",
+    steps: ["Dim your screen", "Write tomorrow's top task", "Do 3 neck rolls each side", "Breathe deeply 5 times", "Set phone face-down"]
+  },
+  {
+    id: 11,
+    title: "Confidence Mirror",
+    category: "Focus",
+    xp: 70,
+    duration: "8m",
+    difficulty: "medium",
+    desc: "A self-affirmation challenge with facial smile verification. Look in the mirror and smile at yourself.",
+    validationType: "mirror",
+    steps: ["Enable mirror camera or position yourself in front of a mirror", "Make kind eye contact with yourself", "Say: 'I am doing my best with what I have'", "Name one strength out loud", "Smile at yourself genuinely"]
+  },
+  {
+    id: 12,
+    title: "Emotion Regulation",
+    category: "ADHD",
+    xp: 45,
+    duration: "6m",
+    difficulty: "medium",
+    desc: "An impulse check exercise. Learn how to pause before reacting to build emotional mastery.",
+    validationType: "quiz",
+    steps: [
+      "Scenario 1: Critical Message Surge",
+      "Scenario 2: Pre-Presentation Panic",
+      "Scenario 3: Ruined Plans & Disappointment",
+      "Scenario 4: Obsessive Rumination on Mistake",
+      "Scenario 5: Multi-Task Overwhelm"
+    ],
+    quizQuestions: [
+      {
+        prompt: "A classmate or teammate sends a blunt message that feels critical or disrespectful. Your immediate impulse is to send a fiery retort. What should you do?",
+        options: [
+          "Immediately reply with equal aggression to establish boundaries",
+          "Vent furiously to three mutual friends right away to get them on your side",
+          "Activate the 90-Second Rule: Put the phone down, exhale slowly, and wait until the physiological amygdala flood clears before responding"
+        ],
+        correctIndex: 2,
+        explanation: "Neurochemical emotional surges last approximately 90 seconds in the bloodstream. Waiting prevents amygdala hijacking and regrettable impulse reactions.",
+        wrongCritique: "Reacting while flooded with adrenaline escalates conflict and fuels lasting interpersonal stress."
+      },
+      {
+        prompt: "You suddenly feel a wave of chest tightness and panic before an important presentation. What physical technique directly triggers the parasympathetic calming response?",
+        options: [
+          "Hyperventilate rapidly to take in as much air as possible",
+          "Take a Physiological Sigh: two quick inhales through the nose followed by one long, slow, vocalized exhale through the mouth",
+          "Repeat 'don't panic, don't panic' in your head continuously"
+        ],
+        correctIndex: 1,
+        explanation: "The Physiological Sigh rapidly re-inflates collapsed alveoli in the lungs and stimulates the vagus nerve to slow heart rate in seconds.",
+        wrongCritique: "Trying to mentally suppress panic ('don't panic') actually amplifies sympathetic arousal and heartbeat."
+      },
+      {
+        prompt: "An unexpected cancellation ruins your weekend plans and you feel anger and despair creeping in. How can you practice cognitive reframing?",
+        options: [
+          "Think: 'Everything always goes wrong in my life, I can never have nice things'",
+          "Ask yourself: 'What is one unexpected opportunity or quiet rest this freed up time offers me?'",
+          "Pretend you feel completely ecstatic and bottle up your disappointment entirely"
+        ],
+        correctIndex: 1,
+        explanation: "Cognitive reframing acknowledges disappointment without catastrophic all-or-nothing thinking, opening space for adaptable problem-solving.",
+        wrongCritique: "Catastrophizing or suppressing emotions creates severe subconscious distress."
+      },
+      {
+        prompt: "You made an embarrassing mistake in front of others and replay it in your head on an obsessive loop. What is the best psychological response?",
+        options: [
+          "Replay it 20 times until you figure out how to never be awkward again",
+          "Practice self-distancing: Talk to yourself using your name as if coaching a friend ('[Name], you're human, everyone makes mistakes, let's learn from it')",
+          "Hide in your room for three days and avoid speaking to anyone"
+        ],
+        correctIndex: 1,
+        explanation: "Self-distancing (using third-person or a supportive coaching tone) reduces activity in the brain's default mode network and halts rumination.",
+        wrongCritique: "Rumination deepens shame grooves in neural pathways, and social isolation increases depression risk."
+      },
+      {
+        prompt: "You feel overwhelmed by 5 different urgent tasks pulling at you simultaneously. What is the DBT 'One-Mindfully' principle?",
+        options: [
+          "Try to multitask on 3 of them at the exact same time",
+          "Choose the single highest priority, give 100% of your present awareness only to that task, and allow the other 4 to wait their turn",
+          "Panic and abandon all 5 tasks to watch TV"
+        ],
+        correctIndex: 1,
+        explanation: "One-mindfulness stops cognitive fragmentation. Doing one thing at a time with full presence reduces cortisol and doubles execution quality.",
+        wrongCritique: "Multitasking under stress is a cognitive illusion that increases error rates by up to 40%."
+      }
+    ]
+  },
+  {
+    id: 13,
+    title: "Panic Button Rescue",
+    category: "Breathing",
+    xp: 45,
+    duration: "3m",
+    difficulty: "easy",
+    desc: "A fast-acting somatic calming session for high stress moments.",
+    validationType: "breathing",
+    steps: ["Place hands on stomach", "Exhale fully with a sigh", "Double inhale through nose", "Slow exhale through mouth", "Repeat 4 times"]
+  },
+  {
+    id: 14,
+    title: "Digital Boundaries Challenge",
+    category: "Focus",
+    xp: 90,
+    duration: "30m",
+    difficulty: "hard",
+    desc: "Lock all social media apps and study distraction-free for 30 minutes.",
+    validationType: "timer",
+    steps: ["Turn off notifications", "Put phone in another room", "Set 30-minute timer", "Work on your highest priority", "Review your focus log"]
+  },
+  {
+    id: 15,
+    title: "Positive Self-Talk Journal",
+    category: "EQ",
+    xp: 50,
+    duration: "5m",
+    difficulty: "easy",
+    desc: "Rewrite 3 negative self-criticisms into constructive coaching thoughts.",
+    validationType: "reframe",
+    steps: [
+      "Negative Thought 1: 'I'm not smart enough for this'",
+      "Reframe Thought 1 with compassion & growth",
+      "Negative Thought 2: 'I mess everything up'",
+      "Reframe Thought 2 with patience",
+      "Negative Thought 3: 'I'm hopelessly behind'"
+    ],
+    promptCues: [
+      "I am currently learning something new, and struggling is a natural part of neuroplasticity.",
+      "I made a mistake, but mistakes are data points for improvement, not an identity.",
+      "I am moving at my own healthy pace, and comparing myself to others ignores my unique journey."
+    ]
+  },
+  {
+    id: 16,
+    title: "5-4-3-2-1 Sensory Reset",
+    category: "Grounding",
+    xp: 40,
+    duration: "4m",
+    difficulty: "easy",
+    desc: "Engage your physical senses to interrupt escalating anxiety spirals.",
+    validationType: "sensory",
+    steps: ["Look around for 5 shapes", "Find 4 textures around you", "Listen for 3 distinct sounds", "Notice 2 physical sensations", "Take 1 slow deep breath"]
+  },
+  {
+    id: 17,
+    title: "ADHD Task Slicing",
+    category: "ADHD",
+    xp: 70,
+    duration: "10m",
+    difficulty: "medium",
+    desc: "Take a huge, overwhelming project and slice it into 5 tiny, stress-free tasks.",
+    validationType: "sensory",
+    steps: ["Write down the big project", "Write down step 1 (under 5 mins)", "Write down step 2", "Write down step 3", "Write down steps 4 and 5"]
+  },
+  {
+    id: 18,
+    title: "Uncertainty Tolerance Block",
+    category: "OCD",
+    xp: 85,
+    duration: "15m",
+    difficulty: "hard",
+    desc: "Sit with a low-level worry or doubt for 15 minutes without checking/seeking reassurance.",
+    validationType: "timer",
+    steps: ["Identify the doubt/checking trigger", "Set a 15-minute timer", "Commit to zero checking/reassurance", "Observe the anxiety rise and fall", "Note your success"]
+  },
 ];
 
 export const COURSES = [

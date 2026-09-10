@@ -1,14 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { fetchGeminiDirect, fetchPsychReply } from "@/lib/gemini";
 import { analyzeVibeFromImage } from "@/lib/gemini-vision";
-import type { FaceMetrics } from "@/lib/face-analyzer";
+import { analyzeFaceFrame, type FaceMetrics } from "@/lib/face-analyzer";
+import {
+  detectGibberish,
+  validateEmotionWord,
+  validateReframe,
+  validateSensoryObservation
+} from "@/lib/quest-validator";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Target, BookOpen, UserCheck, BarChart2, Settings as SettingsIcon,
   Send, Mic, MicOff, Eye, Phone, Video, ChevronRight, Flame, Star, X,
   Play, Pause, CheckCircle, Clock, Trophy, TrendingUp, Bell, Lock, Volume2,
   LogOut, Sliders, RefreshCw, ChevronDown, ChevronUp, Shield, AlertTriangle,
-  Calendar, ArrowRight, MoreVertical, Sparkles, Loader2, PhoneOff, Camera
+  Calendar, ArrowRight, MoreVertical, Sparkles, Loader2, PhoneOff, Camera,
+  HelpCircle, ThumbsUp, Smile
 } from "lucide-react";
 import { AnimeAvatar } from "@/components/AnimeAvatar";
 import { MusicPlayer } from "@/components/MusicPlayer";
@@ -669,11 +676,18 @@ function CompanionCustomizerModal({ onClose }: { onClose: () => void }) {
 
 // ─── QUESTS TAB ──────────────────────────────────────────────────────────────
 function QuestsTab() {
-  const { user, completedQuests, completeQuest } = useStore();
+  const { user, companion, completedQuests, completeQuest } = useStore();
   const [activeQuest, setActiveQuest] = useState<typeof QUESTS[0] | null>(null);
   const [questStep, setQuestStep] = useState(0);
   const [questDone, setQuestDone] = useState(false);
   const [stepVerified, setStepVerified] = useState(false);
+
+  // Category filter
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // Scenario Quiz state
+  const [selectedQuizOption, setSelectedQuizOption] = useState<number | null>(null);
+  const [quizFeedback, setQuizFeedback] = useState<{ isCorrect: boolean; text: string } | null>(null);
 
   // Breathing pacer state
   const [breathPhase, setBreathPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
@@ -684,8 +698,18 @@ function QuestsTab() {
   const [sprintSeconds, setSprintSeconds] = useState(15);
   const [sprintActive, setSprintActive] = useState(false);
 
-  // Text observation / reflection state
+  // Text observation / reflection validation state
   const [textInput, setTextInput] = useState("");
+  const [validatingText, setValidatingText] = useState(false);
+  const [textFeedback, setTextFeedback] = useState<{ isValid: boolean; message: string; score?: number } | null>(null);
+
+  // Confidence Mirror camera state
+  const [mirrorCamActive, setMirrorCamActive] = useState(false);
+  const [mirrorSmileScore, setMirrorSmileScore] = useState(0);
+  const [mirrorFaceFound, setMirrorFaceFound] = useState(false);
+  const mirrorVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mirrorStreamRef = useRef<MediaStream | null>(null);
+  const mirrorIntervalRef = useRef<any>(null);
 
   // Mindful confirmation state
   const [mindfulPause, setMindfulPause] = useState(3);
@@ -693,16 +717,35 @@ function QuestsTab() {
 
   const levelXP = user?.xp || 0;
 
+  const stopMirrorCamera = () => {
+    if (mirrorIntervalRef.current) {
+      clearInterval(mirrorIntervalRef.current);
+      mirrorIntervalRef.current = null;
+    }
+    if (mirrorStreamRef.current) {
+      mirrorStreamRef.current.getTracks().forEach(t => t.stop());
+      mirrorStreamRef.current = null;
+    }
+    setMirrorCamActive(false);
+    setMirrorSmileScore(0);
+    setMirrorFaceFound(false);
+  };
+
   const resetStepState = () => {
     setStepVerified(false);
+    setSelectedQuizOption(null);
+    setQuizFeedback(null);
     setBreathActive(false);
     setBreathTimer(4);
     setBreathPhase("inhale");
     setSprintSeconds(15);
     setSprintActive(false);
     setTextInput("");
+    setTextFeedback(null);
+    setValidatingText(false);
     setMindfulPause(3);
     setMindfulActive(false);
+    stopMirrorCamera();
   };
 
   const startQuest = (q: typeof QUESTS[0]) => {
@@ -710,6 +753,12 @@ function QuestsTab() {
     setQuestStep(0);
     setQuestDone(false);
     resetStepState();
+  };
+
+  // Close quest cleanup
+  const handleCloseQuest = () => {
+    stopMirrorCamera();
+    setActiveQuest(null);
   };
 
   // Breathing pacer timer effect
@@ -769,14 +818,162 @@ function QuestsTab() {
     return () => clearInterval(interval);
   }, [mindfulActive, activeQuest]);
 
-  const currentStep = activeQuest ? activeQuest.steps[questStep] || "" : "";
-  const isBreathing = activeQuest?.category === "Breathing" || /breath|inhale|exhale/i.test(currentStep);
-  const isTimer = !isBreathing && (/timer|sprint|focus on|distraction|minutes/i.test(currentStep));
-  const isInput = !isBreathing && !isTimer && (/name|write|note|reframe|describe|pick|think|identify|find/i.test(currentStep));
+  // Clean up camera on unmount
+  useEffect(() => {
+    return () => {
+      stopMirrorCamera();
+    };
+  }, []);
 
-  const handleVerifyText = () => {
-    if (textInput.trim().length >= 3) {
+  // Determine current step validation context
+  const currentStep = activeQuest ? activeQuest.steps[questStep] || "" : "";
+  const isQuiz = Boolean(activeQuest?.validationType === "quiz" && activeQuest.quizQuestions && activeQuest.quizQuestions[questStep]);
+  const currentQuizQuestion = isQuiz ? activeQuest!.quizQuestions![questStep] : null;
+
+  const isMirror = activeQuest?.validationType === "mirror" || /mirror|smile/i.test(currentStep);
+  const isBreathing = !isQuiz && (activeQuest?.validationType === "breathing" || /breath|inhale|exhale/i.test(currentStep));
+  const isTimer = !isQuiz && !isBreathing && (activeQuest?.validationType === "timer" || /timer|sprint|focus on|distraction|minutes/i.test(currentStep));
+  const isEmotionCheck = !isQuiz && (activeQuest?.validationType === "emotion" || /emotion/i.test(currentStep));
+  const isReframeCheck = !isQuiz && (activeQuest?.validationType === "reframe" || /reframe|self-talk|boundary|gratitude/i.test(activeQuest?.title || ""));
+  const isSensoryCheck = !isQuiz && (activeQuest?.validationType === "sensory" || /sensory|grounding|worry|see|touch|hear|smell|taste|slice/i.test(currentStep));
+  const isInput = !isQuiz && !isBreathing && !isTimer && !isMirror && (isEmotionCheck || isReframeCheck || isSensoryCheck || /name|write|note|reframe|describe|pick|think|identify|find/i.test(currentStep));
+
+  // ── Quiz Option Handler (Right vs Wrong) ───────────────────────────────────
+  const handleSelectQuizOption = (optionIndex: number) => {
+    if (!currentQuizQuestion) return;
+    setSelectedQuizOption(optionIndex);
+
+    if (optionIndex === currentQuizQuestion.correctIndex) {
+      setQuizFeedback({
+        isCorrect: true,
+        text: currentQuizQuestion.explanation,
+      });
       setStepVerified(true);
+    } else {
+      setQuizFeedback({
+        isCorrect: false,
+        text: currentQuizQuestion.wrongCritique,
+      });
+      setStepVerified(false);
+    }
+  };
+
+  // ── Text Validation Handler (Gibberish + Taxonomy + CBT) ────────────────────
+  const handleValidateText = async () => {
+    if (validatingText) return;
+
+    // 1. Anti-gibberish check
+    const gibberishCheck = detectGibberish(textInput);
+    if (gibberishCheck.isGibberish) {
+      setTextFeedback({
+        isValid: false,
+        message: gibberishCheck.reason || "Please provide a genuine, realistic response.",
+      });
+      setStepVerified(false);
+      return;
+    }
+
+    // 2. Emotion Taxonomy Verification
+    if (isEmotionCheck) {
+      const res = validateEmotionWord(textInput);
+      setTextFeedback({
+        isValid: res.isValid,
+        message: res.feedback,
+      });
+      setStepVerified(res.isValid);
+      return;
+    }
+
+    // 3. CBT Cognitive Reframing Verification
+    if (isReframeCheck) {
+      setValidatingText(true);
+      const cue = activeQuest?.promptCues?.[questStep] || currentStep || "I always fail at this";
+      try {
+        const res = await validateReframe(cue, textInput, companion?.name || "Asha");
+        setTextFeedback({
+          isValid: res.isValid,
+          message: res.feedback,
+          score: res.score,
+        });
+        setStepVerified(res.isValid);
+      } catch {
+        setTextFeedback({
+          isValid: true,
+          message: "Reframing captured! Cultivating self-compassion strengthens mental resilience.",
+        });
+        setStepVerified(true);
+      } finally {
+        setValidatingText(false);
+      }
+      return;
+    }
+
+    // 4. Sensory Grounding Verification
+    if (isSensoryCheck) {
+      const res = validateSensoryObservation(questStep, textInput);
+      setTextFeedback({
+        isValid: res.isValid,
+        message: res.feedback,
+      });
+      setStepVerified(res.isValid);
+      return;
+    }
+
+    // 5. Default General Text
+    if (textInput.trim().length >= 4) {
+      setTextFeedback({
+        isValid: true,
+        message: "Observation verified and saved to your journey log.",
+      });
+      setStepVerified(true);
+    } else {
+      setTextFeedback({
+        isValid: false,
+        message: "Please write a more complete reflection (at least 4 letters).",
+      });
+      setStepVerified(false);
+    }
+  };
+
+  // ── Camera Mirror Smile Detector Handler ──────────────────────────────────
+  const startMirrorCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      mirrorStreamRef.current = stream;
+      if (mirrorVideoRef.current) {
+        mirrorVideoRef.current.srcObject = stream;
+        await mirrorVideoRef.current.play();
+      }
+      setMirrorCamActive(true);
+
+      // Analyze frames every 300ms
+      mirrorIntervalRef.current = setInterval(() => {
+        if (!mirrorVideoRef.current || mirrorVideoRef.current.readyState < 2) return;
+        try {
+          const result = analyzeFaceFrame(mirrorVideoRef.current, companion?.name || "Asha");
+          setMirrorSmileScore(result.metrics.smile);
+          setMirrorFaceFound(result.metrics.faceDetected);
+
+          // If smile intensity >= 32%, automatically verify!
+          if (result.metrics.smile >= 32) {
+            setStepVerified(true);
+            setTextFeedback({
+              isValid: true,
+              message: `Genuine smile detected (${result.metrics.smile}%)! Looking at yourself with warmth sends an instant neurochemical safety signal to your limbic system.`,
+            });
+          }
+        } catch (err) {
+          console.warn("[Mirror frame analysis]:", err);
+        }
+      }, 300);
+    } catch (err) {
+      console.warn("[Camera mirror error]:", err);
+      setTextFeedback({
+        isValid: false,
+        message: "Camera access unavailable. You can use the manual affirmation button below.",
+      });
     }
   };
 
@@ -788,25 +985,42 @@ function QuestsTab() {
     } else {
       completeQuest(activeQuest.id, activeQuest.xp);
       setQuestDone(true);
+      stopMirrorCamera();
     }
   };
 
+  const categories = ["all", "ADHD", "OCD", "Anxiety", "Focus", "Breathing", "Grounding", "EQ"];
+  const filteredQuests = selectedCategory === "all"
+    ? QUESTS
+    : QUESTS.filter(q => q.category.toLowerCase() === selectedCategory.toLowerCase());
+
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="bg-card border border-border rounded-2xl p-5">
+      {/* Header & Stats Banner */}
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
             <span className="text-xl font-black text-primary">{user?.level || 1}</span>
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-black font-serif text-foreground">Wellness Journey</h2>
-            <div className="flex items-center gap-4 mt-1">
-              <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                <Star size={14} className="text-amber-500" /> {levelXP} Total XP
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-black font-serif text-foreground">Wellness Quests</h2>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                Verified Progression
               </span>
-              <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                <Flame size={14} className="text-orange-500" /> {user?.streak || 0} Day Streak
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Science-backed challenges evaluated for genuine practice and authentic right/wrong choices.
+            </p>
+            <div className="flex items-center gap-4 mt-2">
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                <Star size={13} className="text-amber-500 fill-amber-500" /> {levelXP} Total XP
+              </span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                <Flame size={13} className="text-orange-500 fill-orange-500" /> {user?.streak || 0} Day Streak
+              </span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                <CheckCircle size={13} className="text-primary" /> {completedQuests.length} of {QUESTS.length} Completed
               </span>
             </div>
           </div>
@@ -815,36 +1029,64 @@ function QuestsTab() {
             <p className="text-sm font-bold text-primary">{Math.round((levelXP % 500) / 5)}%</p>
           </div>
         </div>
-        <div className="mt-3 bg-muted rounded-full h-2.5 overflow-hidden">
+        <div className="mt-3 bg-muted rounded-full h-2 overflow-hidden">
           <motion.div className="h-full bg-gradient-to-r from-primary to-green-400 rounded-full"
             animate={{ width: `${Math.round((levelXP % 500) / 5)}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
         </div>
       </div>
 
-      {/* Quest grid */}
+      {/* Category Filter Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              selectedCategory === cat
+                ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {cat === "all" ? "All Quests" : cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Quest Grid */}
       <div>
-        <h3 className="text-lg font-bold font-serif text-foreground mb-4">Daily Quests</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {QUESTS.map(quest => {
+          {filteredQuests.map(quest => {
             const done = completedQuests.includes(quest.id);
             const color = CATEGORY_COLORS[quest.category] || "#3A7A52";
             return (
               <motion.div key={quest.id} whileHover={{ y: -2, scale: 1.01 }} layout
                 className={`bg-card border-2 rounded-2xl p-4 space-y-3 transition-all ${done ? "border-primary/30 opacity-80" : "border-border hover:border-primary/40 hover:shadow-md"}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                    style={{ background: color + "20", color }}>
-                    {quest.category}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                      style={{ background: color + "20", color }}>
+                      {quest.category}
+                    </span>
+                    {quest.validationType === "quiz" && (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                        Scenario Quiz
+                      </span>
+                    )}
+                    {quest.validationType === "mirror" && (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 border border-blue-500/30">
+                        Face Camera
+                      </span>
+                    )}
+                  </div>
                   <span className="text-sm font-bold flex items-center gap-1 text-amber-600">
-                    <Star size={13} /> {quest.xp}
+                    <Star size={13} className="fill-amber-500" /> {quest.xp} XP
                   </span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-foreground font-serif">{quest.title}</h4>
+                  <h4 className="font-bold text-foreground font-serif text-base">{quest.title}</h4>
                   <p className="text-muted-foreground text-xs mt-1 leading-relaxed line-clamp-2">{quest.desc}</p>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between pt-1">
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Clock size={11} /> {quest.duration}</span>
                     <span className="capitalize">{quest.difficulty}</span>
@@ -852,7 +1094,7 @@ function QuestsTab() {
                   <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                     onClick={() => !done && startQuest(quest)}
                     data-testid={`btn-quest-start-${quest.id}`}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${done ? "bg-primary/10 text-primary cursor-default" : "bg-foreground text-background hover:opacity-90 cursor-pointer"}`}>
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${done ? "bg-primary/10 text-primary cursor-default" : "bg-foreground text-background hover:opacity-90 cursor-pointer shadow-sm"}`}>
                     {done ? <><CheckCircle size={12} /> Done</> : <><Play size={12} className="ml-0.5" /> Start</>}
                   </motion.button>
                 </div>
@@ -862,31 +1104,40 @@ function QuestsTab() {
         </div>
       </div>
 
-      {/* Active Quest Modal with Live Interactive Step Verification */}
+      {/* ── Active Quest Modal with Intelligent Verification ── */}
       <AnimatePresence>
         {activeQuest && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-              className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-5">
+              className="bg-card border border-border rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-5 my-8">
               {!questDone ? (
                 <>
+                  {/* Modal Header */}
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                      style={{ background: (CATEGORY_COLORS[activeQuest.category] || "#3A7A52") + "20", color: CATEGORY_COLORS[activeQuest.category] || "#3A7A52" }}>
-                      {activeQuest.category}
-                    </span>
-                    <button onClick={() => setActiveQuest(null)}><X size={18} className="text-muted-foreground" /></button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                        style={{ background: (CATEGORY_COLORS[activeQuest.category] || "#3A7A52") + "20", color: CATEGORY_COLORS[activeQuest.category] || "#3A7A52" }}>
+                        {activeQuest.category}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1">
+                        <Star size={11} className="text-amber-500 fill-amber-500" /> +{activeQuest.xp} XP
+                      </span>
+                    </div>
+                    <button onClick={handleCloseQuest} className="p-1 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                      <X size={18} className="text-muted-foreground" />
+                    </button>
                   </div>
+
                   <div>
                     <h3 className="font-black font-serif text-foreground text-lg">{activeQuest.title}</h3>
                     <p className="text-muted-foreground text-xs mt-1">{activeQuest.desc}</p>
                   </div>
 
-                  {/* Steps Progress List */}
-                  <div className="space-y-2">
+                  {/* Steps Progress Checklist */}
+                  <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                     {activeQuest.steps.map((step, i) => (
-                      <div key={i} className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${i === questStep ? "bg-primary/10 border border-primary/30 shadow-sm" : i < questStep ? "opacity-50" : "opacity-35"}`}>
+                      <div key={i} className={`flex items-center gap-3 p-2.5 rounded-xl transition-all ${i === questStep ? "bg-primary/10 border border-primary/30 shadow-sm" : i < questStep ? "opacity-60 bg-muted/40" : "opacity-35 bg-muted/20"}`}>
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${i < questStep ? "bg-primary text-primary-foreground" : i === questStep ? "bg-primary/20 text-primary border border-primary/40" : "bg-muted text-muted-foreground"}`}>
                           {i < questStep ? <CheckCircle size={12} /> : i + 1}
                         </div>
@@ -895,9 +1146,167 @@ function QuestsTab() {
                     ))}
                   </div>
 
-                  {/* ── Interactive Verification Panel for Current Step ── */}
-                  <div className="pt-1">
-                    {isBreathing ? (
+                  {/* ── Realistic Verification Center ── */}
+                  <div className="pt-1 border-t border-border/60">
+
+                    {/* 1. SCENARIO QUIZ MODE (Right vs Wrong) */}
+                    {isQuiz && currentQuizQuestion && (
+                      <div className="space-y-3.5 bg-muted/20 border border-border rounded-2xl p-4">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <HelpCircle size={15} className="text-amber-500" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-amber-600">Scenario Quiz • Step {questStep + 1} of {activeQuest.steps.length}</span>
+                            <p className="text-xs font-semibold text-foreground leading-relaxed mt-0.5">
+                              {currentQuizQuestion.prompt}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Quiz Options */}
+                        <div className="space-y-2 pt-1">
+                          {currentQuizQuestion.options.map((opt, optIdx) => {
+                            const isSelected = selectedQuizOption === optIdx;
+                            const isCorrect = isSelected && optIdx === currentQuizQuestion.correctIndex;
+                            const isWrong = isSelected && optIdx !== currentQuizQuestion.correctIndex;
+
+                            return (
+                              <button
+                                key={optIdx}
+                                onClick={() => handleSelectQuizOption(optIdx)}
+                                className={`w-full text-left p-3 rounded-xl text-xs transition-all border flex items-start gap-2.5 cursor-pointer ${
+                                  isCorrect
+                                    ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-950 dark:text-emerald-200 font-medium"
+                                    : isWrong
+                                    ? "bg-rose-500/10 border-rose-500/50 text-rose-950 dark:text-rose-200"
+                                    : "bg-card border-border hover:border-primary/40 text-foreground hover:bg-muted/40"
+                                }`}
+                              >
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5 ${
+                                  isCorrect
+                                    ? "bg-emerald-500 text-white"
+                                    : isWrong
+                                    ? "bg-rose-500 text-white"
+                                    : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {String.fromCharCode(65 + optIdx)}
+                                </span>
+                                <span className="flex-1 leading-snug">{opt}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Quiz Feedback Banner */}
+                        {quizFeedback && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                              quizFeedback.isCorrect
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                                : "bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300"
+                            }`}
+                          >
+                            {quizFeedback.isCorrect ? (
+                              <CheckCircle size={15} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertTriangle size={15} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div>
+                              <p className="font-bold">
+                                {quizFeedback.isCorrect ? "Correct Tactic Verified!" : "Counterproductive Strategy — Try Again:"}
+                              </p>
+                              <p className="mt-0.5 leading-relaxed">{quizFeedback.text}</p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 2. CAMERA SMILE MIRROR MODE */}
+                    {isMirror && (
+                      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 text-center space-y-3.5">
+                        <div className="flex items-center justify-between text-xs font-bold text-primary">
+                          <span className="flex items-center gap-1.5"><Camera size={13} /> Biometric Confidence Mirror</span>
+                          <span>Smile Goal: &ge; 35%</span>
+                        </div>
+
+                        {mirrorCamActive ? (
+                          <div className="space-y-3">
+                            <div className="relative w-48 h-48 mx-auto rounded-2xl overflow-hidden border-2 border-primary shadow-inner bg-black">
+                              <video
+                                ref={mirrorVideoRef}
+                                playsInline
+                                muted
+                                className="w-full h-full object-cover transform -scale-x-100"
+                              />
+                              {/* Live smile meter overlay */}
+                              <div className="absolute bottom-2 left-2 right-2 bg-black/70 backdrop-blur-md rounded-lg px-2 py-1 text-[11px] text-white flex items-center justify-between font-mono">
+                                <span>Smile: {mirrorSmileScore}%</span>
+                                <span>{mirrorFaceFound ? "Face Locked" : "Locating Face..."}</span>
+                              </div>
+                            </div>
+
+                            {/* Smile Progress Bar */}
+                            <div className="w-48 mx-auto bg-muted rounded-full h-2 overflow-hidden">
+                              <motion.div
+                                className={`h-full transition-all duration-200 ${mirrorSmileScore >= 32 ? "bg-emerald-500" : "bg-primary"}`}
+                                style={{ width: `${Math.min(100, mirrorSmileScore * 2.5)}%` }}
+                              />
+                            </div>
+
+                            {stepVerified ? (
+                              <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5">
+                                <CheckCircle size={15} /> Genuine Smile Verified!
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground animate-pulse">
+                                Look into the mirror frame and smile warmly at yourself...
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2 py-2">
+                            <p className="text-xs text-muted-foreground">
+                              Activate your camera mirror so Asha can verify your genuine smile and trigger the facial feedback loop:
+                            </p>
+                            <button
+                              onClick={startMirrorCamera}
+                              className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                            >
+                              <Camera size={13} /> Open Live Camera Mirror
+                            </button>
+                            <button
+                              onClick={() => {
+                                setStepVerified(true);
+                                setTextFeedback({
+                                  isValid: true,
+                                  message: "Self-affirmation and smile in physical mirror confirmed.",
+                                });
+                              }}
+                              className="text-[11px] text-muted-foreground underline hover:text-foreground cursor-pointer pt-1"
+                            >
+                              Using physical mirror without webcam
+                            </button>
+                          </div>
+                        )}
+
+                        {textFeedback && (
+                          <div className={`p-2.5 rounded-xl border text-xs text-left ${
+                            textFeedback.isValid
+                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                              : "bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300"
+                          }`}>
+                            <p className="leading-relaxed">{textFeedback.message}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 3. GUIDED BREATHING PACER MODE */}
+                    {isBreathing && (
                       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 text-center space-y-3">
                         <div className="flex items-center justify-between text-xs font-bold text-primary">
                           <span>Guided Breath Cycle (4-7-8)</span>
@@ -925,12 +1334,15 @@ function QuestsTab() {
                           </button>
                         )}
                         {stepVerified && (
-                          <div className="text-xs font-bold text-green-600 flex items-center justify-center gap-1.5 py-1">
+                          <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5 py-1">
                             <CheckCircle size={14} /> Breath Cycle Verified!
                           </div>
                         )}
                       </div>
-                    ) : isTimer ? (
+                    )}
+
+                    {/* 4. SPRINT TIMER MODE */}
+                    {isTimer && (
                       <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center space-y-3">
                         <div className="flex items-center justify-between text-xs font-bold text-amber-600">
                           <span>Focus Sprint Timer</span>
@@ -951,41 +1363,103 @@ function QuestsTab() {
                           <p className="text-xs text-muted-foreground animate-pulse">Deep focus in progress...</p>
                         )}
                         {stepVerified && (
-                          <div className="text-xs font-bold text-green-600 flex items-center justify-center gap-1.5 py-1">
+                          <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5 py-1">
                             <CheckCircle size={14} /> Focus Sprint Verified!
                           </div>
                         )}
                       </div>
-                    ) : isInput ? (
-                      <div className="bg-muted/40 border border-border rounded-2xl p-4 space-y-2.5">
-                        <label className="text-xs font-semibold text-foreground flex items-center justify-between">
-                          <span>Your Input / Observation:</span>
-                          <span className="text-[10px] text-muted-foreground">Min 3 letters</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={textInput}
-                          disabled={stepVerified}
-                          onChange={e => setTextInput(e.target.value)}
-                          onKeyDown={e => e.key === "Enter" && handleVerifyText()}
-                          placeholder="Type your observation here..."
-                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-60"
-                        />
-                        {!stepVerified ? (
-                          <button
-                            onClick={handleVerifyText}
-                            disabled={textInput.trim().length < 3}
-                            className="w-full py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <CheckCircle size={12} /> Verify Entry
-                          </button>
-                        ) : (
-                          <div className="text-xs font-bold text-green-600 flex items-center justify-center gap-1.5 py-1">
-                            <CheckCircle size={14} /> Entry Verified & Recorded!
+                    )}
+
+                    {/* 5. AUTHENTIC TEXT INPUT / CBT / EMOTION CHECK MODE */}
+                    {isInput && (
+                      <div className="bg-muted/30 border border-border rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-foreground">
+                            {isEmotionCheck
+                              ? "Name an Emotion (EQ Vocabulary Check):"
+                              : isReframeCheck
+                              ? "Write Your Compassionate Reframe:"
+                              : "Your Observation / Sensory Detail:"}
+                          </label>
+                          <span className="text-[10px] text-muted-foreground">
+                            {isEmotionCheck ? "Must be a recognized emotion" : "Anti-gibberish verified"}
+                          </span>
+                        </div>
+
+                        {/* Prompt context cue if available */}
+                        {isReframeCheck && (
+                          <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/20 text-xs">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Original Thought:</span>
+                            <p className="text-muted-foreground italic mt-0.5">
+                              "{activeQuest.promptCues?.[questStep] || currentStep}"
+                            </p>
                           </div>
                         )}
+
+                        <div className="space-y-1.5">
+                          <input
+                            type="text"
+                            value={textInput}
+                            disabled={stepVerified || validatingText}
+                            onChange={e => {
+                              setTextInput(e.target.value);
+                              if (textFeedback && !textFeedback.isValid) setTextFeedback(null);
+                            }}
+                            onKeyDown={e => e.key === "Enter" && handleValidateText()}
+                            placeholder={
+                              isEmotionCheck
+                                ? "e.g. anxious, overwhelmed, hopeful, peaceful, fatigued..."
+                                : isReframeCheck
+                                ? "e.g. I am learning and will take it step by step with patience..."
+                                : "Type your honest observation here..."
+                            }
+                            className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60 transition-all"
+                          />
+                        </div>
+
+                        {/* Validation Result Banner */}
+                        {textFeedback && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                              textFeedback.isValid
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+                                : "bg-rose-500/10 border-rose-500/30 text-rose-900 dark:text-rose-200"
+                            }`}
+                          >
+                            {textFeedback.isValid ? (
+                              <CheckCircle size={15} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <AlertTriangle size={15} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div>
+                              <p className="font-bold">
+                                {textFeedback.isValid ? "Verified with Asha!" : "Needs Revision:"}
+                              </p>
+                              <p className="mt-0.5 leading-relaxed">{textFeedback.message}</p>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {!stepVerified && (
+                          <button
+                            onClick={handleValidateText}
+                            disabled={validatingText || textInput.trim().length === 0}
+                            className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                          >
+                            {validatingText ? (
+                              <><Loader2 size={13} className="animate-spin" /> Evaluating with Asha...</>
+                            ) : (
+                              <><CheckCircle size={13} /> Check & Verify Entry</>
+                            )}
+                          </button>
+                        )}
                       </div>
-                    ) : (
+                    )}
+
+                    {/* 6. MINDFUL PRACTICE PAUSE MODE */}
+                    {!isQuiz && !isBreathing && !isTimer && !isInput && !isMirror && (
                       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 text-center space-y-3">
                         <p className="text-xs text-muted-foreground">Practice this action mindfully, then confirm:</p>
                         {!mindfulActive && !stepVerified ? (
@@ -1000,50 +1474,67 @@ function QuestsTab() {
                             Reflecting mindfully... {mindfulPause}s
                           </div>
                         ) : (
-                          <div className="text-xs font-bold text-green-600 flex items-center justify-center gap-1.5 py-1">
+                          <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5 py-1">
                             <CheckCircle size={14} /> Step Verified!
                           </div>
                         )}
                       </div>
                     )}
+
                   </div>
 
                   {/* Progress bar */}
-                  <div className="bg-muted rounded-full h-1.5 overflow-hidden">
-                    <motion.div className="h-full bg-primary rounded-full"
-                      animate={{ width: `${((questStep + 1) / activeQuest.steps.length) * 100}%` }}
-                      transition={{ duration: 0.4 }} />
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Step {questStep + 1} of {activeQuest.steps.length}</span>
+                      <span>{Math.round(((questStep + (stepVerified ? 1 : 0)) / activeQuest.steps.length) * 100)}%</span>
+                    </div>
+                    <div className="bg-muted rounded-full h-1.5 overflow-hidden">
+                      <motion.div className="h-full bg-primary rounded-full"
+                        animate={{ width: `${((questStep + (stepVerified ? 1 : 0)) / activeQuest.steps.length) * 100}%` }}
+                        transition={{ duration: 0.4 }} />
+                    </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <button onClick={() => setActiveQuest(null)} className="px-4 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/50 transition-colors">Quit</button>
+                  {/* Bottom Navigation */}
+                  <div className="flex gap-2.5">
+                    <button
+                      onClick={handleCloseQuest}
+                      className="px-4 py-2.5 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      Quit
+                    </button>
                     <button
                       onClick={nextStep}
                       disabled={!stepVerified}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                         stepVerified
                           ? "bg-primary text-primary-foreground hover:opacity-90 shadow-md shadow-primary/20 cursor-pointer"
                           : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
                       }`}
                     >
-                      {!stepVerified && <Lock size={13} />}
+                      {!stepVerified && <Lock size={12} />}
                       {questStep < activeQuest.steps.length - 1 ? "Next Step →" : `Complete Quest (+${activeQuest.xp} XP)`}
                     </button>
                   </div>
                 </>
               ) : (
+                /* Celebration View upon Completing */
                 <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-center space-y-4 py-4">
                   <motion.div animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }} transition={{ duration: 0.5 }}
                     className="text-5xl">🎉</motion.div>
                   <div>
-                    <h3 className="font-black font-serif text-foreground text-xl">Quest Complete!</h3>
-                    <p className="text-muted-foreground text-sm mt-1">{activeQuest.title}</p>
+                    <h3 className="font-black font-serif text-foreground text-xl">Quest Authentically Completed!</h3>
+                    <p className="text-muted-foreground text-xs mt-1">{activeQuest.title}</p>
                   </div>
                   <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-center justify-center gap-3">
-                    <Star size={20} className="text-amber-500 fill-amber-500" />
-                    <span className="font-black text-2xl text-amber-600">+{activeQuest.xp} XP Awarded</span>
+                    <Star size={22} className="text-amber-500 fill-amber-500" />
+                    <span className="font-black text-2xl text-amber-600">+{activeQuest.xp} XP Earned</span>
                   </div>
-                  <button onClick={() => setActiveQuest(null)} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity cursor-pointer">
+                  <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                    Your answers were verified and your mental health progression metrics have been updated in your dashboard.
+                  </p>
+                  <button onClick={handleCloseQuest} className="w-full py-3 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity cursor-pointer shadow-md shadow-primary/20">
                     Back to Quests
                   </button>
                 </motion.div>
