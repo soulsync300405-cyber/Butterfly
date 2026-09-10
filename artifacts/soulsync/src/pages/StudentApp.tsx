@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { fetchGeminiDirect, fetchPsychReply } from "@/lib/gemini";
 import { analyzeVibeFromImage } from "@/lib/gemini-vision";
+import type { FaceMetrics } from "@/lib/face-analyzer";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Target, BookOpen, UserCheck, BarChart2, Settings as SettingsIcon,
@@ -271,8 +272,8 @@ function ChatTab() {
         const result = await analyzeVibeFromImage(base64Image, companion);
         setVisionResult({
           emotion: result.emotion,
-          fatigue: Math.floor(Math.random() * 40) + 30,
-          focus: Math.floor(Math.random() * 50) + 40,
+          fatigue: result.metrics.fatigue,
+          focus: result.metrics.focus,
           advice: result.text
         });
       }
@@ -1043,6 +1044,8 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
   const [detectedEmotion, setDetectedEmotion] = useState<"Stressed" | "Joyful" | "Focused" | "Exhausted" | null>(null);
   const [expressionDialogue, setExpressionDialogue] = useState("");
   const [vibeScanCount, setVibeScanCount] = useState(0);
+  const [detectedMetrics, setDetectedMetrics] = useState<FaceMetrics | null>(null);
+  const [detectedInsights, setDetectedInsights] = useState<string[]>([]);
   
   // Humor Quiz state
   const [quizQuestionIdx, setQuizQuestionIdx] = useState(0);
@@ -1240,8 +1243,10 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
     
     setScanning(false);
     setVibeScanCount(prev => prev + 1);
-    setDetectedEmotion(result.emotion as any);
+    setDetectedEmotion(result.emotion);
     setExpressionDialogue(result.text);
+    setDetectedMetrics(result.metrics);
+    setDetectedInsights(result.insights);
   };
 
   const finishVibeScan = () => {
@@ -1655,6 +1660,73 @@ function ScanTab({ setTab, setPlayingCourse }: ScanTabProps) {
                       <p className="text-xs leading-normal text-foreground/90 font-sans">{expressionDialogue}</p>
                     </div>
                   </div>
+
+                  {/* Real Facial Biometrics & Indicators */}
+                  {detectedMetrics && (
+                    <div className="bg-muted/30 border border-border/50 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
+                          Live Facial Biometrics
+                        </span>
+                        <span className="text-[10px] text-green-600 dark:text-green-400 font-semibold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Analyzed from Face
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Smile & Joy */}
+                        <div className="bg-card/80 border border-border/40 rounded-xl p-2.5 space-y-1">
+                          <div className="flex justify-between text-[10px] font-bold">
+                            <span className="text-muted-foreground">😊 Smile / Joy</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-mono">{detectedMetrics.smile}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${detectedMetrics.smile}%` }} />
+                          </div>
+                        </div>
+
+                        {/* Brow Tension / Stress */}
+                        <div className="bg-card/80 border border-border/40 rounded-xl p-2.5 space-y-1">
+                          <div className="flex justify-between text-[10px] font-bold">
+                            <span className="text-muted-foreground">😟 Brow Tension</span>
+                            <span className="text-amber-600 dark:text-amber-400 font-mono">{detectedMetrics.tension}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-amber-500 rounded-full transition-all duration-700" style={{ width: `${detectedMetrics.tension}%` }} />
+                          </div>
+                        </div>
+
+                        {/* Eye Fatigue / Strain */}
+                        <div className="bg-card/80 border border-border/40 rounded-xl p-2.5 space-y-1">
+                          <div className="flex justify-between text-[10px] font-bold">
+                            <span className="text-muted-foreground">😴 Eye Strain</span>
+                            <span className="text-indigo-600 dark:text-indigo-400 font-mono">{detectedMetrics.fatigue}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-indigo-500 rounded-full transition-all duration-700" style={{ width: `${detectedMetrics.fatigue}%` }} />
+                          </div>
+                        </div>
+
+                        {/* Focus & Alertness */}
+                        <div className="bg-card/80 border border-border/40 rounded-xl p-2.5 space-y-1">
+                          <div className="flex justify-between text-[10px] font-bold">
+                            <span className="text-muted-foreground">🎯 Focus Index</span>
+                            <span className="text-primary font-mono">{detectedMetrics.focus}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-primary rounded-full transition-all duration-700" style={{ width: `${detectedMetrics.focus}%` }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Key Insight */}
+                      {detectedInsights.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground italic border-t border-border/40 pt-1.5 font-sans">
+                          💡 {detectedInsights[0]}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Recommendations */}
                   <div className="space-y-3">
