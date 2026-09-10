@@ -58,8 +58,13 @@ export function usePsychCall() {
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        const iceRef = ref(db, `calls/${rid}/iceCandidates/psych`);
-        push(iceRef, e.candidate.toJSON());
+        const iceData = e.candidate.toJSON();
+        push(ref(db, `calls/${rid}/iceCandidates/psych`), iceData).catch(() => {});
+        fetch("/api/sync/calls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "ice-candidate", role: "psych", roomId: rid, candidate: iceData }),
+        }).catch(() => {});
       }
     };
 
@@ -122,7 +127,7 @@ export function usePsychCall() {
 
     const pc = setupPC(incoming.userSocketId, stream, rid);
 
-    // Listen for Offer
+    // Listen for Offer on Firebase
     const offerRef = ref(db, `calls/${rid}/offer`);
     onValue(offerRef, async (snapshot) => {
       const data = snapshot.val();
@@ -131,15 +136,16 @@ export function usePsychCall() {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        set(ref(db, `calls/${rid}/answer`), {
-          type: answer.type,
-          sdp: answer.sdp,
-          from: clientId
+        const answerData = { type: answer.type, sdp: answer.sdp, from: clientId };
+        set(ref(db, `calls/${rid}/answer`), answerData).catch(() => {});
+        fetch("/api/sync/calls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "answer", roomId: rid, sdp: answerData }),
         }).catch(() => {});
       }
     }, () => {});
 
-    // Transition to active
     setTimeout(() => setStatus("active"), 600);
 
   }, [incoming, setupPC, clientId]);
@@ -217,6 +223,19 @@ export function usePsychCall() {
                   userName: ev.userName || "Student"
                 });
                 setStatus("incoming");
+              } else if (ev.type === "offer" && ev.roomId === roomId && pcRef.current && !pcRef.current.currentRemoteDescription) {
+                await pcRef.current.setRemoteDescription(new RTCSessionDescription(ev.sdp));
+                const answer = await pcRef.current.createAnswer();
+                await pcRef.current.setLocalDescription(answer);
+                const answerData = { type: answer.type, sdp: answer.sdp };
+                fetch("/api/sync/calls", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ type: "answer", roomId, sdp: answerData }),
+                }).catch(() => {});
+                setStatus("active");
+              } else if (ev.type === "ice-candidate" && ev.roomId === roomId && ev.role === "user" && pcRef.current) {
+                pcRef.current.addIceCandidate(new RTCIceCandidate(ev.candidate)).catch(() => {});
               } else if (ev.type === "ended" && ev.roomId === roomId) {
                 cleanup();
                 setStatus("ended");
@@ -228,7 +247,7 @@ export function usePsychCall() {
           }
         }
       } catch (_) {}
-    }, 700);
+    }, 600);
 
     // BroadcastChannel listener
     try {

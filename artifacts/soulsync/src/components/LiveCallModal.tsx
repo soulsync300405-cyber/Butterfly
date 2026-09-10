@@ -21,9 +21,10 @@ export function LiveCallModal({
   localStream, remoteStream, peerName, role,
   messages, onSendMessage, onEnd, status,
 }: LiveCallModalProps) {
-  const localVidRef  = useRef<HTMLVideoElement>(null);
-  const remoteVidRef = useRef<HTMLVideoElement>(null);
-  const chatEndRef   = useRef<HTMLDivElement>(null);
+  const localVidRef   = useRef<HTMLVideoElement>(null);
+  const remoteVidRef  = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const chatEndRef    = useRef<HTMLDivElement>(null);
 
   const [muted, setMuted]       = useState(false);
   const [camOff, setCamOff]     = useState(false);
@@ -31,7 +32,7 @@ export function LiveCallModal({
   const [input, setInput]       = useState("");
   const [secs, setSecs]         = useState(0);
 
-  // Wire streams → video elements
+  // Wire streams → video/audio elements
   useEffect(() => {
     if (localVidRef.current && localStream) {
       localVidRef.current.srcObject = localStream;
@@ -41,6 +42,10 @@ export function LiveCallModal({
   useEffect(() => {
     if (remoteVidRef.current && remoteStream) {
       remoteVidRef.current.srcObject = remoteStream;
+    }
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch(() => {});
     }
   }, [remoteStream]);
 
@@ -97,6 +102,7 @@ export function LiveCallModal({
 
         {/* Remote video / waiting */}
         <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+          <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
           {hasRemoteVideo ? (
             <video ref={remoteVidRef} autoPlay playsInline
               className="w-full h-full object-cover" />
